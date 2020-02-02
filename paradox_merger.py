@@ -2,6 +2,12 @@ from zipfile import ZipFile
 from collections import defaultdict
 import toml
 import re
+import os
+from pathlib import Path
+import diff_match_patch as dmp
+import ClauseWizard as cw
+import ftfy
+import shutil
 
 class Tree(defaultdict):
     def __init__(self, value=None):
@@ -9,26 +15,44 @@ class Tree(defaultdict):
         self.value = value
 
 class ModInfo:
-    def __init__(self,modpath,datapath,name,files,overrides, depends):
+    def __init__(self,modpath,datapath,name,files,conflicts, depends, isArchive=False):
         self.modpath = modpath
-        self.overrides = overrides
+        self.conflicts = conflicts
         self.files = files
         self.datapath = datapath
         self.name = name
         self.depends = depends
+        self.isArchive = isArchive
+    def full_path(self):
+        return self.modpath + "/" + self.datapath
 
-def grep(file,reg):
+class Conflict:
+    def __init__(self,mod_names,path):
+        self.path = path
+        self.mod_names = mod_names
+
+def caseless_zip(path):
+    modpath = path.rsplit("/",1)
+    path_zip = modpath[1]
+    prepend = modpath[0]
+
+    for file in os.listdir(prepend):
+        if path_zip.lower() == file.lower():
+            return prepend+"/"+file
+    return path
+
+def grep(file,reg,extra=0):
     inputText = ""
     with open(file) as textFile:
         inputText = textFile.read()
-    matches = re.findall(reg,inputText)
+    matches = re.findall(reg,inputText, extra)
 
     return matches
 
 def zip_list(zipPath):
     biglist = []
     valid_dirs = []
-    with ZipFile(zipPath, 'r') as modArchive:
+    with ZipFile(caseless_zip(zipPath), 'r') as modArchive:
         biglist = list(filter(lambda s: s.find("/") != -1, modArchive.namelist()))
 
     dirs = Tree()
@@ -41,17 +65,33 @@ def zip_list(zipPath):
             else:
                 dirs[separated[0]].value.append(separated[1])
         elif len(separated) == 3:
+            if dirs[separated[0]].value == None:
+                dirs[separated[0]].value = []
             if dirs[separated[0]][separated[1]].value == None:
-                dirs[separated[0]][separated[1]].value = list()
-                dirs[separated[0]][separated[1]].value.append([separated[2]])
+                dirs[separated[0]][separated[1]].value = [separated[2]]
             else:
-                dirs[separated[0]][separated[1]].value.append([separated[2]])
+                dirs[separated[0]][separated[1]].value.append(separated[2])
     #print(dirs)
 
     return dirs
 
 def dir_list(dirPath):
+    biglist = []
+    valid_dirs = []
+    for dirs in os.listdir(dirPath):
+        print(dirs)
     return {}
+
+def collect_dependencies(modfile):
+    depends = grep(modfile,"dependencies")
+    if len(depends) > 0:
+        print("========================")
+        depends = grep(modfile,"dependencies[^}]+}",re.MULTILINE)
+        depends_trimmed = depends[0].replace("\n","").replace("\r","").rstrip("}").split("{")[1].strip()
+        print(depends_trimmed)
+    
+    return []
+
 
 def generate_mod_data(modPath):
 
@@ -59,25 +99,294 @@ def generate_mod_data(modPath):
     mod_list = []
     
     for modmod in matches:
-        zips = grep(modPath+"/"+modmod[1:-1],"\"[^\"]*\.zip")
+        zips = grep(modPath+"/"+modmod[1:-1],"archive\s*=\s*\"[^\"]*\.zip")
+        paths = grep(modPath+"/"+modmod[1:-1],"archive\s*=\s*\"[^\"]*\"")
         names = grep(modPath+"/"+modmod[1:-1],"name\s*=\s*\"[^\"]*\"")
-        if len(zips) < 1 or len(names) < 1:
+        #dependencies = collect_dependencies(modPath+"/"+modmod[1:-1])
+
+        if (len(zips) < 1 and len(paths) < 1) or len(names) < 1:
+            print(modmod)
             print("Spaghetti-Os")
-        else:
-            archive = modPath+"/"+zips[0][1:]
+        elif len(names) > 0 and len(zips) > 0:
+            zipfile = zips[0].split("\"")[1]
+            archive = modPath+"/"+zipfile
             #print(archive)
             name = names[0].split("\"")[1]
-            print(name)
+            #print(name)
             filetree = zip_list(archive)
-            new_mod = ModInfo(modPath,zips[0][1:],name,filetree,[],[])
+            #print(filetree)
+            new_mod = ModInfo(modPath,zipfile,name,filetree,[],[],True)
             mod_list.append(new_mod)
+        elif len(paths) > 0 and len(names) > 0:
+            dirfile = paths[0].split("\"")[1]
+            directory = modPath+"/"+dirfile
+            name = names[0].split("\"")[1]
+            filetree = dir_list(directory)
+            new_mod = ModInfo(modPath,dirfile,name,filetree,[],[])
     return mod_list
 
 
-def generate_conflicts(modPath):
-    mods = generate_mod_data(modPath)
-    print(len(mods))
-    return []
+def generate_conflicts(mods,conflict_dirs):
+    possible = {}
+    for dirs in conflict_dirs:
+        for mod in mods:
+            if mod.files[dirs].value != None:
+                files = mod.files[dirs].value
+                for file in files:
+                    if not ((dirs+"/"+file).lower() in possible):
+                        possible[(dirs+"/"+file).lower()] = []
+                    possible[(dirs+"/"+file).lower()].append(mod.name)
+                for folder in mod.files[dirs]:
+                    files = mod.files[dirs][folder].value
+                    for file in files:
+                        if not ((dirs+"/"+folder+"/"+file.lower()) in possible):
+                            possible[(dirs+"/"+folder+"/"+file).lower()] = []
+                        possible[(dirs+"/"+folder+"/"+file).lower()].append(mod.name)
+
+
+    dudes = []
+    
+    for dude in possible:
+        if len(possible[dude]) < 2 :
+            dudes.append(dude)
+
+    for dude in dudes:
+        del possible[dude]
+
+    return possible
+
+def generate_mod(conflicts,mod_name,mod_archive,file_name):
+    esc_quote = "\\\""
+    file_out = "name = \""+mod_name+"\"\n"
+    file_out += "archive = \"mod/"+mod_archive+"\"\n"
+    file_out += "dependencies = {\n"
+    mods = []
+    for conflict in conflicts:
+        for name in conflicts[conflict]:
+            if not name in mods and name != mod_name:
+                mods.append(name)
+    for mod in mods:
+        if " " in mod:
+            file_out += "\""+esc_quote+mod+esc_quote+"\"\n"
+        else:
+            file_out += "\""+mod+"\"\n"
+    file_out += "}\n"
+
+    f = open(file_name,"w")
+    f.write(file_out)
+
+def parse_game_file(file_path):
+    pass
+
+def conflicts_against_base(basedir,conflicts,valid_paths):
+    in_vanilla = {}
+    for conflict in conflicts:
+        dirs = conflict.split("/")
+        if len(dirs) == 2:
+            matches = filter(lambda s: s.lower() == dirs[1],os.listdir(basedir+"/"+dirs[0]))
+            for i in matches:
+                in_vanilla[conflict] = basedir+"/"+dirs[0]+"/"+i
+        elif len(dirs) == 3:
+            matches = filter(lambda s: s.lower() == dirs[2],os.listdir(basedir+"/"+dirs[0]+"/"+dirs[1]))
+            for i in matches:
+                in_vanilla[conflict] = basedir+"/"+dirs[0]+"/"+dirs[1]+"/"+i
+
+    return in_vanilla
+
+def preprocess(original):
+    txt=original
+    txt = txt.replace("EU4txt", "", 1)  # Remove first line
+    # Hack for CK2 parsing because there's a trailing } at the end of the file
+    txt = txt.replace("CK2txt", "CK2data={", 1)
+    txt = txt.replace("HOI4txt", "", 1)  # Same for HOI4 games
+    txt = re.sub(r"([A-Za-z0-9_.\-]+){",
+                 r"\1={", txt)  # Solve phrases without equal sign
+    txt = re.sub(r"\"([A-Za-z0-9_.\-]+)\"\s*=",
+                 r"\1=", txt, 0, re.MULTILINE)  # Unquote keys in phrases
+    txt = re.sub(r"=\s*{", r"={", txt, 0, re.MULTILINE)  # Fix spaces
+    txt = re.sub(r"^\s*{\s*\}", r"", txt, 0, re.MULTILINE)  # Hack for random empty objects start of the line
+    txt = re.sub(r"([0-9]+\.[0-9]+\.[0-9])\s*=", r"\1 =",txt, 0, re.MULTILINE)
+    txt = re.sub(r"[\r\n]","\n",txt,0,re.MULTILINE)
+    # If this breaks any further I'll break myself
+    return txt
+
+def auto_merge(in_vanilla,conflicts,mods):
+    vanilla_files = {}
+    for vanilla_mod in in_vanilla:
+        vanilla_files[vanilla_mod] = [in_vanilla[vanilla_mod]]
+        for mod in conflicts[vanilla_mod]:
+            mod_data = next(filter(lambda x: x.name == mod,mods))
+            vanilla_files[vanilla_mod].append(mod_data.modpath+"/"+mod_data.datapath)
+    
+    dir_to_write = "./tmp/"
+
+    for file in vanilla_files:
+        file_contents = list()
+        print(file)
+        with open(vanilla_files[file][0],"r",encoding="iso8859-1") as f:
+            file_contents.append(f.read())
+        text = preprocess(file_contents[0])
+
+        try:
+            cw.cwparse(text,False)
+        except:
+            print(text)
+
+        
+    return
+
+def extract_all(conflicts,in_vanilla,mods,modpath,outpath):
+    by_mod = {}
+    current_path = os.getcwd()
+    outpath = os.path.abspath(outpath)
+    if not os.path.exists(outpath):
+        os.mkdir(outpath, mode=0o777 )
+        os.mkdir(outpath+"/vanilla", mode=0o0777)
+
+    for conf in in_vanilla:
+        #print(in_vanilla[conf])
+        #print(outpath+"/vanilla/"+conf.rsplit("/",1)[0])
+        Path(outpath+"/vanilla/"+conf.rsplit("/",1)[0]).mkdir(parents=True,exist_ok=True)
+        current = ""
+        with open(in_vanilla[conf],"r",encoding="ISO-8859-1") as f:
+            current = f.read()
+        with open(outpath+"/vanilla/"+conf,"w",encoding="utf-8") as f:
+            f.write((current.replace("\r\n","\n")).replace("\n","\r\n")+"\n")
+
+    for conf in conflicts:
+        for mod in conflicts[conf]:
+            if mod not in by_mod:
+                by_mod[mod] = list()
+            by_mod[mod].append(conf)
+
+    for mod in by_mod:
+        new_dir = outpath + "/" + "".join(list(filter(lambda c: c.isalnum() ,mod)))
+        if not os.path.exists(new_dir):
+            os.mkdir(os.path.abspath(new_dir),mode=0o777)
+        os.chdir(os.path.abspath(new_dir))
+        #print(os.getcwd())
+        valid = []
+        biglist = []
+        mod_data = next(filter(lambda x: x.name == mod,mods))
+        with ZipFile(caseless_zip(mod_data.full_path()), 'r') as modArchive:
+            biglist = list(filter(lambda s: s.find("/") != -1, modArchive.namelist()))
+            for file in by_mod[mod]:
+                filtered = list(filter(lambda s: s.lower() == file,biglist))
+                #print(filtered[0])
+                modArchive.extract(filtered[0])
+                current = ""
+                with open(filtered[0],"r",encoding="ISO-8859-1") as f:
+                    current = f.read()
+                with open(outpath+"/vanilla/"+conf,"w",encoding="utf-8") as f:
+                    f.write((current.replace("\r\n","\n")).replace("\n","\r\n")+"\n")
+
+        os.chdir(outpath)
+    os.chdir(current_path)
+import textwrap
+import diff_match_patch
+
+class DiffMatchPatch(dmp.diff_match_patch):
+
+    def diff_prettyText(self, diffs):
+        """Convert a diff array into a pretty Text report.
+        Args:
+          diffs: Array of diff tuples.
+        Returns:
+          Text representation.
+        """
+        results_diff = []
+
+        def parse(sign):
+            return "\n" if len(results_diff) else "", \
+                    textwrap.indent( "%s" % text, sign, lambda line: True )
+
+        # print(diffs)
+        for (op, text) in diffs:
+
+            if op == self.DIFF_INSERT:
+                results_diff.append( "%s%s" % parse( "+ " ) )
+
+            elif op == self.DIFF_DELETE:
+                results_diff.append( "%s%s" % parse( "- " ) )
+
+            elif op == self.DIFF_EQUAL:
+                results_diff.append(textwrap.indent("%s" % text.lstrip('\n'), "  "))
+
+        return "".join(results_diff)
+
+
+def line_diff(text1,text2):
+    diff_match = DiffMatchPatch()
+    diff_struct = diff_match.diff_linesToChars(text1, text2)
+
+    lineText1 = diff_struct[0] # .chars1
+    lineText2 = diff_struct[1] # .chars2
+    lineArray = diff_struct[2] # .lineArray
+
+    diffs = diff_match.diff_main( lineText1, lineText2, False )
+    diff_match.diff_charsToLines( diffs, lineArray )
+    diff_match.diff_cleanupSemantic( diffs )
+    #print(diff_match.diff_prettyText(diffs))
+    return diffs
+
+def dif_auto(conflicts,in_vanilla,mods,modpath,outpath):
+    shutil.rmtree(outpath+"/merged_patch/",ignore_errors=True)
+    Path(outpath+"/merged_patch/").mkdir(mode=0o0777)
+    bad = []
+    #print(outpath+"/merged_patch/")
+    #bob = input()
+    for conf in conflicts:
+        folders = list(map(lambda s: "".join(list(filter(lambda c: c.isalnum(), s))),conflicts[conf]))
+        folders.insert(0,"vanilla")
+        #print(folders)
+        file_contents = []
+        for folder in folders:
+            file_path = Path(outpath+"/"+folder+"/"+conf).parent
+            file = Path(conf).name
+            filtered = list(filter(lambda s: s.lower() == file.lower(),os.listdir(file_path)))
+            file = filtered[0]
+            with open(str(file_path)+"/"+file,"r",encoding="ISO-8859-1") as f:
+                #print(str(file_path)+"/"+file)
+                file_contents.append(f.read().replace("\r\n","\n"))
+        orig = file_contents[0]
+        diffs = []
+        differ = dmp.diff_match_patch()
+        for file in file_contents[1:]:
+            if len(file) < 3:
+                pass
+            bob = line_diff(orig,file)
+            diffs.append(bob)
+            patches = differ.patch_make(bob)
+            #print(patches)
+        patches = list(map(lambda d: differ.patch_make(orig,d),diffs))
+        #print(patches)
+
+        new_text = orig
+        no_good = False
+        for patch in patches:
+            tmp_text, results = differ.patch_apply(patch,new_text)
+            #print(results)
+            for i in results:
+                if not i:
+                    no_good = True
+            if no_good:
+                bad.append(conf)
+                break
+            new_text = tmp_text
+
+        if no_good:
+            print("This file will need manual merging: "+conf)       
+        else:
+            #print(new_text)
+            new_path = Path(outpath+"/merged_patch/"+conf).parent
+            if not os.path.exists(new_path):
+                new_path.mkdir(parents=True,exist_ok=True,mode=0o0777)
+            with open(outpath+"/merged_patch/"+conf,"w",encoding="utf-8") as f:
+                #print(outpath+"/merged_patch/"+conf)
+                f.write((new_text.replace("\r\n","\n")).replace("\n","\r\n")+"\n")
+                #input()
+    return bad
+
 
 def main():
     configs = {}
@@ -92,6 +401,32 @@ def main():
     if len(configs) < 1:
         exit("Couldn't load configs")
     
-    conflicts = generate_conflicts(configs["CK2"]["modpath"])
+    mods = generate_mod_data(configs["CK2"]["modpath"])
+    conflicts = generate_conflicts(mods,configs["CK2"]["valid_paths"])
 
+    generate_mod(conflicts,"Merged Patch","merged_patch.zip","merged_patch.mod")
+
+    in_vanilla = conflicts_against_base(configs["CK2"]["datapath"],conflicts,configs["CK2"]["valid_paths"])
+
+    by_mod = {}
+
+    for conf in in_vanilla:
+        #print(conf)
+        #rint(conflicts[conf],end="\n\n\n")
+        for mod in conflicts[conf]:
+            if mod not in by_mod:
+                by_mod[mod] = list()
+            by_mod[mod].append(conf)
+    #auto_merge(in_vanilla,conflicts,mods)
+    difr = len(max(by_mod)) - len(min(by_mod))
+    for conf in by_mod:
+        endlen = "\t"*int(difr/4 - len(conf)/4)
+
+    map(lambda s: print(s),conflicts)
+    extract_all(conflicts,in_vanilla,mods,configs["CK2"]["modpath"],"./tmp")
+    bad = dif_auto(conflicts,in_vanilla,mods,configs["CK2"]["modpath"],"./tmp")
+    print("\n List of Bad mods:")
+    for conf in bad:
+        print(conf)
+        print(conflicts[conf],end="\n\n")
 main()
