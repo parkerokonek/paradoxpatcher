@@ -84,6 +84,7 @@ def dir_list(dirPath):
     return {}
 
 def collect_dependencies(modfile):
+    esc_quote = "\\\""
     depends = grep(modfile,"dependencies")
     if len(depends) > 0:
         print("========================")
@@ -348,19 +349,21 @@ def line_diff(text1,text2):
     #print(diff_match.diff_prettyText(diffs))
     return diffs
 
-def dif_auto(conflicts,in_vanilla,mods,modpath,outpath):
+def dif_auto(conflicts,in_vanilla,mods,modpath,outpath,verbose=False):
     shutil.rmtree(outpath+"/merged_patch/",ignore_errors=True)
     Path(outpath+"/merged_patch/").mkdir(mode=0o0777)
     bad = []
-    #print(outpath+"/merged_patch/")
-    #bob = input()
     good = 0
     total = 0
+
+    if verbose:
+        print("\n--- Starting Automerge Process ---\n")
+
     for conf in in_vanilla:
         folders = list(map(lambda s: "".join(list(filter(lambda c: c.isalnum(), s))),conflicts[conf]))
         folders.insert(0,"vanilla")
-        #print(folders)
         file_contents = []
+
         for folder in folders:
             file_path = Path(outpath+"/"+folder+"/"+conf).parent
             file = Path(conf).name
@@ -373,51 +376,45 @@ def dif_auto(conflicts,in_vanilla,mods,modpath,outpath):
                 print(os.listdir(file_path))
                 quit()
             with open(str(file_path)+"/"+file,"r",encoding="ISO-8859-1") as f:
-                #print(str(file_path)+"/"+file)
                 file_contents.append(clean_file_contents(f.read().replace("\r\n","\n")))
         orig = file_contents[0]
         diffs = []
         differ = dmp.diff_match_patch()
+
         for file in file_contents[1:]:
             if len(file) < 3:
                 pass
             bob = line_diff(orig,file)
             diffs.append(bob)
             patches = differ.patch_make(bob)
-            #print(patches)
         patches = list(map(lambda d: differ.patch_make(orig,d),diffs))
         patches.sort(key=lambda x: len(x),reverse=False)
-        #print(patches)
 
         new_text = orig
         no_good = False
+
         for patch in patches:
             tmp_text, results = differ.patch_apply(patch,new_text)
-            #print(results)
             for i in results:
                 if not i:
                     no_good = True
             if no_good:
                 bad.append(conf)
-                #print(results)
                 break
             new_text = tmp_text
 
         if no_good:
-            print("This file will need manual merging: "+conf) 
+            if verbose:
+                print("This file will need manual merging: "+conf) 
             total += 1      
         else:
-            #print(new_text)
             total += 1
             good += 1
             new_path = Path(outpath+"/merged_patch/"+conf).parent
             if not os.path.exists(new_path):
                 new_path.mkdir(parents=True,exist_ok=True,mode=0o0777)
             with open(outpath+"/merged_patch/"+conf,"w",encoding="ISO-8859-1") as f:
-                #print(outpath+"/merged_patch/"+conf)
                 f.write((new_text.replace("\r\n","\n")).replace("\n","\r\n")+"\n")
-                #input()
-    print(str(100*good/total)+"% of merges worked")
     return bad
 
 def extract_all_zips(base_dir,mods,folder):
@@ -425,8 +422,6 @@ def extract_all_zips(base_dir,mods,folder):
     for mod in mods:
         data_path = os.path.join(base_dir,mod.datapath)
         mod_path = list(filter(lambda s: os.path.join("mod",s.lower()) == mod.datapath.lower(),os.listdir(based_dir)))
-        #print(os.listdir(based_dir))
-        #print(mod.datapath)
         with ZipFile(os.path.join(base_dir,"mod",mod_path[0])) as z:
             z.extractall(folder)
 
@@ -500,10 +495,14 @@ def main():
 
     by_mod = {}
 
+    if args.verbose:
+        print("--- Mod Conflicts in Vanilla Files ---\n")
     for conf in in_vanilla:
-        print(conf)
+        if args.verbose:
+            print(conf)
         for mod in conflicts[conf]:
-            print("-- "+mod)
+            if args.verbose:
+                print("-- "+mod)
             if mod not in by_mod:
                 by_mod[mod] = list()
             by_mod[mod].append(conf)
@@ -516,11 +515,16 @@ def main():
         extract_all_zips(configs[args.game_id]["modpath"],mods,"./"+flat_name+"_tmp_zip")
     extract_all(conflicts,in_vanilla,mods,configs[args.game_id]["modpath"],"./"+flat_name+"_tmp")
     
-    bad = dif_auto(conflicts,in_vanilla,mods,configs[args.game_id]["modpath"],"./"+flat_name+"_tmp")
-    print("\n List of Bad mods:")
-    for conf in bad:
-        print(conf)
-        print(conflicts[conf],end="\n\n")
+    bad = dif_auto(conflicts,in_vanilla,mods,configs[args.game_id]["modpath"],"./"+flat_name+"_tmp",args.verbose)
+    
+    if len(bad) > 0:
+        print("\n List of Bad mods:")
+        for conf in bad:
+            print(conf)
+            print(conflicts[conf],end="\n\n")
+        print("{:.2f}% of merges completed automatically.".format(100.0-100.0*len(bad)/len(conflicts)))
+    else:
+        print("All merges completed automatically.")
     
 
 if __name__ == "__main__":
