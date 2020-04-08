@@ -1,10 +1,5 @@
-tmp/***
-ClauseClone/***
 __pycache__/***
-Clause*/***
-tmp_zip/***
-paradox-tools/***
-d
 *.txt
 *.zip
 *.mod
+.vscode
