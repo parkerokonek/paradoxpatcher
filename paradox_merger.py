@@ -1,12 +1,13 @@
+#!/usr/bin/python3
 from zipfile import ZipFile
 from collections import defaultdict
 import toml
 import re
 import os
+import math
+import argparse
 from pathlib import Path
 import diff_match_patch as dmp
-import ClauseWizard as cw
-import ftfy
 import shutil
 
 class Tree(defaultdict):
@@ -155,17 +156,22 @@ def generate_conflicts(mods,conflict_dirs):
 
     return possible
 
-def generate_mod(conflicts,mod_name,mod_archive,file_name):
+def generate_mod(conflicts,mods,mod_name,mod_archive,file_name,extract=False):
     esc_quote = "\\\""
     file_out = "name = \""+mod_name+"\"\n"
     file_out += "archive = \"mod/"+mod_archive+"\"\n"
     file_out += "dependencies = {\n"
-    mods = []
-    for conflict in conflicts:
-        for name in conflicts[conflict]:
-            if not name in mods and name != mod_name:
-                mods.append(name)
-    for mod in mods:
+    mod_list = []
+    if extract:
+        for mod in mods:
+            if not mod.name in mod_list and mod.name != mod_name:
+                mod_list.append(mod.name)
+    else:
+        for conflict in conflicts:
+            for name in conflicts[conflict]:
+                if not name in mod_list and name != mod_name:
+                    mod_list.append(name)
+    for mod in mod_list:
         if " " in mod:
             file_out += "\""+esc_quote+mod+esc_quote+"\"\n"
         else:
@@ -274,11 +280,15 @@ def extract_all(conflicts,in_vanilla,mods,modpath,outpath):
                 filtered = list(filter(lambda s: s.lower() == file,biglist))
                 #print(filtered[0])
                 modArchive.extract(filtered[0])
+                #print(mod)
+                #print(conf)
                 current = ""
                 with open(filtered[0],"r",encoding="ISO-8859-1") as f:
                     current = f.read()
-                with open(outpath+"/vanilla/"+conf,"w",encoding="utf-8") as f:
-                    f.write((current.replace("\r\n","\n")).replace("\n","\r\n")+"\n")
+                if conf in in_vanilla:
+                    print("++ "+file)
+                    with open(outpath+"/vanilla/"+conf,"w",encoding="utf-8") as f:
+                        f.write((current.replace("\r\n","\n")).replace("\n","\r\n")+"\n")
 
         os.chdir(outpath)
     os.chdir(current_path)
@@ -314,6 +324,15 @@ class DiffMatchPatch(dmp.diff_match_patch):
 
         return "".join(results_diff)
 
+def clean_file_contents(file_content):
+    info = list(filter(lambda x: len(x) > 0, list(map(lambda s: s.partition('#')[0].strip(), file_content.split("\n")))))
+
+    info.insert(0," ")
+    info.append(" ")
+
+
+    return "\n".join(info)
+
 
 def line_diff(text1,text2):
     diff_match = DiffMatchPatch()
@@ -335,7 +354,9 @@ def dif_auto(conflicts,in_vanilla,mods,modpath,outpath):
     bad = []
     #print(outpath+"/merged_patch/")
     #bob = input()
-    for conf in conflicts:
+    good = 0
+    total = 0
+    for conf in in_vanilla:
         folders = list(map(lambda s: "".join(list(filter(lambda c: c.isalnum(), s))),conflicts[conf]))
         folders.insert(0,"vanilla")
         #print(folders)
@@ -344,10 +365,16 @@ def dif_auto(conflicts,in_vanilla,mods,modpath,outpath):
             file_path = Path(outpath+"/"+folder+"/"+conf).parent
             file = Path(conf).name
             filtered = list(filter(lambda s: s.lower() == file.lower(),os.listdir(file_path)))
-            file = filtered[0]
+            try:
+                file = filtered[0]
+            except: 
+                print(file_path)
+                print(file)
+                print(os.listdir(file_path))
+                quit()
             with open(str(file_path)+"/"+file,"r",encoding="ISO-8859-1") as f:
                 #print(str(file_path)+"/"+file)
-                file_contents.append(f.read().replace("\r\n","\n"))
+                file_contents.append(clean_file_contents(f.read().replace("\r\n","\n")))
         orig = file_contents[0]
         diffs = []
         differ = dmp.diff_match_patch()
@@ -359,6 +386,7 @@ def dif_auto(conflicts,in_vanilla,mods,modpath,outpath):
             patches = differ.patch_make(bob)
             #print(patches)
         patches = list(map(lambda d: differ.patch_make(orig,d),diffs))
+        patches.sort(key=lambda x: len(x),reverse=False)
         #print(patches)
 
         new_text = orig
@@ -371,27 +399,42 @@ def dif_auto(conflicts,in_vanilla,mods,modpath,outpath):
                     no_good = True
             if no_good:
                 bad.append(conf)
+                #print(results)
                 break
             new_text = tmp_text
 
         if no_good:
-            print("This file will need manual merging: "+conf)       
+            print("This file will need manual merging: "+conf) 
+            total += 1      
         else:
             #print(new_text)
+            total += 1
+            good += 1
             new_path = Path(outpath+"/merged_patch/"+conf).parent
             if not os.path.exists(new_path):
                 new_path.mkdir(parents=True,exist_ok=True,mode=0o0777)
-            with open(outpath+"/merged_patch/"+conf,"w",encoding="utf-8") as f:
+            with open(outpath+"/merged_patch/"+conf,"w",encoding="ISO-8859-1") as f:
                 #print(outpath+"/merged_patch/"+conf)
                 f.write((new_text.replace("\r\n","\n")).replace("\n","\r\n")+"\n")
                 #input()
+    print(str(100*good/total)+"% of merges worked")
     return bad
 
+def extract_all_zips(base_dir,mods,folder):
+    based_dir = os.path.join(base_dir,"mod")
+    for mod in mods:
+        data_path = os.path.join(base_dir,mod.datapath)
+        mod_path = list(filter(lambda s: os.path.join("mod",s.lower()) == mod.datapath.lower(),os.listdir(based_dir)))
+        #print(os.listdir(based_dir))
+        #print(mod.datapath)
+        with ZipFile(os.path.join(base_dir,"mod",mod_path[0])) as z:
+            z.extractall(folder)
 
-def main():
+
+def read_configs(config_file):
     configs = {}
     try:
-        configs = toml.load("./merger.toml")
+        configs = toml.load(config_file)
         #print(configs)
     except FileNotFoundError:
         print("Oh no")
@@ -400,33 +443,85 @@ def main():
     
     if len(configs) < 1:
         exit("Couldn't load configs")
+    return configs
+
+def convert_all(folder):
+    file_dirs = []
+    for root, dirs, files in os.walk(folder):
+        path = root.split(os.sep)
+        for file in files:
+                if file.endswith(".txt"):
+                    file_dirs.append(root+"/"+file)
+
+    for file in file_dirs:
+        content = str()
+        try:
+            with open(file,"r",encoding="utf-8") as f:
+                content = f.read()
+        except:
+            with open(file,"r",encoding="ISO-8859-1") as f:
+                content = f.read()
+        #print(file)
+        try:
+            yeah = content.encode("cp1252")
+            with open(file,"w", encoding="cp1252") as f:
+                f.write(content)
+        except:
+            print(file)
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Merge Paradox mod conflicts.')
+    parser.add_argument('-c','--config',help='configuration file to load, defaults to current directory')
+    parser.add_argument('-x','--extract',help='extract all non-conflicting files to a folder',action='store_true')
+    parser.add_argument('-d','--dry-run',help='list file conflicts without merging',action='store_true')
+    parser.add_argument('-v','--verbose',help='print information about processed mods',action='store_true')
+    parser.add_argument('game_id',help='game in the config to use')
+    parser.add_argument('patch_name',help='name of the generated mod')
+
+    args = parser.parse_args()
+    if args.config == None:
+        args.config = "./merger.toml"
+    return args
+
+def main():
+    args = parse_arguments()
+    configs = read_configs(args.config)
+    mods = generate_mod_data(configs[args.game_id]["modpath"])
+
+    conflicts = generate_conflicts(mods,configs[args.game_id]["valid_paths"])
+
     
-    mods = generate_mod_data(configs["CK2"]["modpath"])
-    conflicts = generate_conflicts(mods,configs["CK2"]["valid_paths"])
+    
+    flat_name = args.patch_name.lower()
+    flat_name = re.sub(r'[^a-z0-9 ]+','',flat_name)
+    flat_name = re.sub(r' ','_',flat_name)
 
-    generate_mod(conflicts,"Merged Patch","merged_patch.zip","merged_patch.mod")
-
-    in_vanilla = conflicts_against_base(configs["CK2"]["datapath"],conflicts,configs["CK2"]["valid_paths"])
+    in_vanilla = conflicts_against_base(configs[args.game_id]["datapath"],conflicts,configs[args.game_id]["valid_paths"])
 
     by_mod = {}
 
     for conf in in_vanilla:
-        #print(conf)
-        #rint(conflicts[conf],end="\n\n\n")
+        print(conf)
         for mod in conflicts[conf]:
+            print("-- "+mod)
             if mod not in by_mod:
                 by_mod[mod] = list()
             by_mod[mod].append(conf)
-    #auto_merge(in_vanilla,conflicts,mods)
-    difr = len(max(by_mod)) - len(min(by_mod))
-    for conf in by_mod:
-        endlen = "\t"*int(difr/4 - len(conf)/4)
 
-    map(lambda s: print(s),conflicts)
-    extract_all(conflicts,in_vanilla,mods,configs["CK2"]["modpath"],"./tmp")
-    bad = dif_auto(conflicts,in_vanilla,mods,configs["CK2"]["modpath"],"./tmp")
+    generate_mod(conflicts,mods,args.patch_name,flat_name+".zip",flat_name+".mod",args.extract)
+    if args.dry_run:
+        exit()
+
+    if args.extract:
+        extract_all_zips(configs[args.game_id]["modpath"],mods,"./"+flat_name+"_tmp_zip")
+    extract_all(conflicts,in_vanilla,mods,configs[args.game_id]["modpath"],"./"+flat_name+"_tmp")
+    
+    bad = dif_auto(conflicts,in_vanilla,mods,configs[args.game_id]["modpath"],"./"+flat_name+"_tmp")
     print("\n List of Bad mods:")
     for conf in bad:
         print(conf)
         print(conflicts[conf],end="\n\n")
-main()
+    
+
+if __name__ == "__main__":
+    main()
