@@ -1,6 +1,8 @@
 #!/usr/bin/python3
+# Usable under the MIT or Apache-2.0
+# No Warranty or support provided
 from zipfile import ZipFile
-from collections import defaultdict
+from collections import defaultdict,OrderedDict
 import toml
 import re
 import os
@@ -16,7 +18,7 @@ class Tree(defaultdict):
         self.value = value
 
 class ModInfo:
-    def __init__(self,modpath,datapath,name,files,conflicts, depends, isArchive=False):
+    def __init__(self,modpath,datapath,name,files,conflicts, depends, replacement_paths, isArchive=False):
         self.modpath = modpath
         self.conflicts = conflicts
         self.files = files
@@ -24,6 +26,7 @@ class ModInfo:
         self.name = name
         self.depends = depends
         self.isArchive = isArchive
+        self.replacement_paths = replacement_paths
     def full_path(self):
         return self.modpath + "/" + self.datapath
 
@@ -86,14 +89,30 @@ def dir_list(dirPath):
 def collect_dependencies(modfile):
     esc_quote = "\\\""
     depends = grep(modfile,"dependencies")
+    out = list()
     if len(depends) > 0:
-        print("========================")
         depends = grep(modfile,"dependencies[^}]+}",re.MULTILINE)
         depends_trimmed = depends[0].replace("\n","").replace("\r","").rstrip("}").split("{")[1].strip()
-        print(depends_trimmed)
-    
-    return []
+        depends_trimmed = depends_trimmed.replace(esc_quote,"").replace("\"\"","\"")
+        depends_list = depends_trimmed.split("\"")
 
+        
+        for i in depends_list:
+            if len(i) > 0:
+                out.append(i)
+    return out
+
+def sort_by_dependencies(mod_list):
+    result_list = [x for x in mod_list if len(x.depends) == 0]
+    dependent = [x for x in mod_list if len(x.depends) > 0]
+    for dep_mod in dependent:
+        for dep in dep_mod.depends:
+            if dep in map(lambda x: x.name, mod_list) and dep not in map(lambda x: x.name, result_list):
+                dependent.append(dep_mod)
+                break
+        else:
+            result_list.append(dep_mod)
+    return result_list
 
 def generate_mod_data(modPath):
 
@@ -101,10 +120,12 @@ def generate_mod_data(modPath):
     mod_list = []
     
     for modmod in matches:
-        zips = grep(modPath+"/"+modmod[1:-1],"archive\s*=\s*\"[^\"]*\.zip")
-        paths = grep(modPath+"/"+modmod[1:-1],"archive\s*=\s*\"[^\"]*\"")
-        names = grep(modPath+"/"+modmod[1:-1],"name\s*=\s*\"[^\"]*\"")
-        #dependencies = collect_dependencies(modPath+"/"+modmod[1:-1])
+        mod_file = modPath+"/"+modmod[1:-1]
+        zips = grep(mod_file,"archive\s*=\s*\"[^\"]*\.zip")
+        paths = grep(mod_file,"archive\s*=\s*\"[^\"]*\"")
+        names = grep(mod_file,"name\s*=\s*\"[^\"]*\"")
+        dependencies = collect_dependencies(mod_file)
+        replace_paths = grep(mod_file,"replace_path\s*=\s*\"[^\"]\"")
 
         if (len(zips) < 1 and len(paths) < 1) or len(names) < 1:
             print(modmod)
@@ -117,15 +138,15 @@ def generate_mod_data(modPath):
             #print(name)
             filetree = zip_list(archive)
             #print(filetree)
-            new_mod = ModInfo(modPath,zipfile,name,filetree,[],[],True)
+            new_mod = ModInfo(modPath,zipfile,name,filetree,[],dependencies,replace_paths,True)
             mod_list.append(new_mod)
         elif len(paths) > 0 and len(names) > 0:
             dirfile = paths[0].split("\"")[1]
             directory = modPath+"/"+dirfile
             name = names[0].split("\"")[1]
             filetree = dir_list(directory)
-            new_mod = ModInfo(modPath,dirfile,name,filetree,[],[])
-    return mod_list
+            new_mod = ModInfo(modPath,dirfile,name,filetree,[],dependencies,replace_paths)
+    return sort_by_dependencies(mod_list)
 
 
 def generate_conflicts(mods,conflict_dirs):
@@ -137,17 +158,20 @@ def generate_conflicts(mods,conflict_dirs):
                 for file in files:
                     if not ((dirs+"/"+file).lower() in possible):
                         possible[(dirs+"/"+file).lower()] = []
+                    new_list = list(filter(lambda x: x not in mod.depends, possible[(dirs+"/"+file).lower()]))
+                    possible[(dirs+"/"+file).lower()] = new_list
                     possible[(dirs+"/"+file).lower()].append(mod.name)
+                    
                 for folder in mod.files[dirs]:
                     files = mod.files[dirs][folder].value
                     for file in files:
                         if not ((dirs+"/"+folder+"/"+file.lower()) in possible):
                             possible[(dirs+"/"+folder+"/"+file).lower()] = []
+                        new_list = list(filter(lambda x: x not in mod.depends, possible[(dirs+"/"+folder+"/"+file).lower()]))
+                        possible[(dirs+"/"+folder+"/"+file).lower()] = new_list
                         possible[(dirs+"/"+folder+"/"+file).lower()].append(mod.name)
 
-
     dudes = []
-    
     for dude in possible:
         if len(possible[dude]) < 2 :
             dudes.append(dude)
@@ -265,6 +289,8 @@ def extract_all(conflicts,in_vanilla,mods,modpath,outpath):
             if mod not in by_mod:
                 by_mod[mod] = list()
             by_mod[mod].append(conf)
+    
+    print("------")
 
     for mod in by_mod:
         new_dir = outpath + "/" + "".join(list(filter(lambda c: c.isalnum() ,mod)))
@@ -286,7 +312,8 @@ def extract_all(conflicts,in_vanilla,mods,modpath,outpath):
                 current = ""
                 with open(filtered[0],"r",encoding="ISO-8859-1") as f:
                     current = f.read()
-                if conf in in_vanilla:
+                if file in in_vanilla:
+                    print(conflicts[conf])
                     print("++ "+file)
                     with open(outpath+"/vanilla/"+conf,"w",encoding="utf-8") as f:
                         f.write((current.replace("\r\n","\n")).replace("\n","\r\n")+"\n")
@@ -410,6 +437,7 @@ def dif_auto(conflicts,in_vanilla,mods,modpath,outpath,verbose=False):
         else:
             total += 1
             good += 1
+            print(outpath+"/merged_patch/"+conf)
             new_path = Path(outpath+"/merged_patch/"+conf).parent
             if not os.path.exists(new_path):
                 new_path.mkdir(parents=True,exist_ok=True,mode=0o0777)
@@ -484,8 +512,6 @@ def main():
     mods = generate_mod_data(configs[args.game_id]["modpath"])
 
     conflicts = generate_conflicts(mods,configs[args.game_id]["valid_paths"])
-
-    
     
     flat_name = args.patch_name.lower()
     flat_name = re.sub(r'[^a-z0-9 ]+','',flat_name)
@@ -493,7 +519,7 @@ def main():
 
     in_vanilla = conflicts_against_base(configs[args.game_id]["datapath"],conflicts,configs[args.game_id]["valid_paths"])
 
-    by_mod = {}
+    by_mod = OrderedDict()
 
     if args.verbose:
         print("--- Mod Conflicts in Vanilla Files ---\n")
@@ -506,6 +532,10 @@ def main():
             if mod not in by_mod:
                 by_mod[mod] = list()
             by_mod[mod].append(conf)
+
+    #for conf in conflicts:
+    #    print(conf)
+    #    print(conflicts[conf])
 
     generate_mod(conflicts,mods,args.patch_name,flat_name+".zip",flat_name+".mod",args.extract)
     if args.dry_run:
