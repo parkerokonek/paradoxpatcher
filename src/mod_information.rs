@@ -1,5 +1,5 @@
 use std::path::{Path,PathBuf};
-use std::collections::HashSet;
+use std::collections::{HashSet,HashMap};
 
 pub struct ModInfo {
     mod_path: PathBuf,
@@ -19,6 +19,34 @@ pub struct ModConflict {
 impl ModConflict {
     pub fn new(path: PathBuf, mods: &[String]) -> ModConflict {
         ModConflict{ file_path: path, mod_names: mods.iter().cloned().collect()}
+    }
+
+    pub fn compare_mods(mod_list: &[ModInfo]) -> Vec<ModConflict> {
+        let mut out = Vec::new();
+        let mut conflicts: HashMap<String,ModConflict> = HashMap::new();
+
+        for mod_info in mod_list {
+            for file_path in &mod_info.file_tree {
+                if let Some(_conf) = conflicts.get(file_path) {
+                    let conf = conflicts.get_mut(file_path).unwrap();
+                    conf.mod_names.push(mod_info.name.clone());
+                } else {
+                    let conf = ModConflict::new(PathBuf::from(file_path),&[mod_info.name.clone()]);
+                }
+            }
+        }
+
+        for conf in conflicts {
+            if conf.1.is_real() {
+                out.push(conf.1);
+            }
+        }
+
+        out
+    }
+
+    fn is_real(&self) -> bool {
+        self.mod_names.len() > 1
     }
 }
 

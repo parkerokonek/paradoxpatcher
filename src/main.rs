@@ -44,6 +44,7 @@ fn main() {
     let config = parse_configs(&args).expect("Couldn't Parse the config file.");
 
     let mod_list: Vec<mod_information::ModInfo> = generate_mod_list(&config.mod_path);
+    let conflicts = mod_information::ModConflict::compare_mods(&mod_list);
 }
 
 fn parse_args() -> ArgOptions {
