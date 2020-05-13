@@ -37,6 +37,9 @@ paradoxmerger CK2 "Merged Patch"
 ```
 ## Appendix
 [Diff Match Patch](https://github.com/google/diff-match-patch): library used for diffing mod files and patching them together
+
 [paradox-tools](https://github.com/taw/paradox-tools): a set of Paradox modding utilities written in Ruby 
+
 [cwtools](https://github.com/tboby/cwtools): a library for manipulating Paradox scripts written in F#
+
 [Pdoxcl2Sharp](https://github.com/nickbabcock/Pdoxcl2Sharp): a C# library for parsing and manipulating Paradox scripts
