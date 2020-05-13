@@ -55,7 +55,6 @@ def grep(file,reg,extra=0):
 
 def zip_list(zipPath):
     biglist = []
-    valid_dirs = []
     with ZipFile(caseless_zip(zipPath), 'r') as modArchive:
         biglist = list(filter(lambda s: s.find("/") != -1, modArchive.namelist()))
 
@@ -80,8 +79,6 @@ def zip_list(zipPath):
     return dirs
 
 def dir_list(dirPath):
-    biglist = []
-    valid_dirs = []
     for dirs in os.listdir(dirPath):
         print(dirs)
     return {}
@@ -206,9 +203,6 @@ def generate_mod(conflicts,mods,mod_name,mod_archive,file_name,extract=False):
     f = open(file_name,"w")
     f.write(file_out)
 
-def parse_game_file(file_path):
-    pass
-
 def conflicts_against_base(basedir,conflicts,valid_paths):
     in_vanilla = {}
     for conflict in conflicts:
@@ -223,48 +217,6 @@ def conflicts_against_base(basedir,conflicts,valid_paths):
                 in_vanilla[conflict] = basedir+"/"+dirs[0]+"/"+dirs[1]+"/"+i
 
     return in_vanilla
-
-def preprocess(original):
-    txt=original
-    txt = txt.replace("EU4txt", "", 1)  # Remove first line
-    # Hack for CK2 parsing because there's a trailing } at the end of the file
-    txt = txt.replace("CK2txt", "CK2data={", 1)
-    txt = txt.replace("HOI4txt", "", 1)  # Same for HOI4 games
-    txt = re.sub(r"([A-Za-z0-9_.\-]+){",
-                 r"\1={", txt)  # Solve phrases without equal sign
-    txt = re.sub(r"\"([A-Za-z0-9_.\-]+)\"\s*=",
-                 r"\1=", txt, 0, re.MULTILINE)  # Unquote keys in phrases
-    txt = re.sub(r"=\s*{", r"={", txt, 0, re.MULTILINE)  # Fix spaces
-    txt = re.sub(r"^\s*{\s*\}", r"", txt, 0, re.MULTILINE)  # Hack for random empty objects start of the line
-    txt = re.sub(r"([0-9]+\.[0-9]+\.[0-9])\s*=", r"\1 =",txt, 0, re.MULTILINE)
-    txt = re.sub(r"[\r\n]","\n",txt,0,re.MULTILINE)
-    # If this breaks any further I'll break myself
-    return txt
-
-def auto_merge(in_vanilla,conflicts,mods):
-    vanilla_files = {}
-    for vanilla_mod in in_vanilla:
-        vanilla_files[vanilla_mod] = [in_vanilla[vanilla_mod]]
-        for mod in conflicts[vanilla_mod]:
-            mod_data = next(filter(lambda x: x.name == mod,mods))
-            vanilla_files[vanilla_mod].append(mod_data.modpath+"/"+mod_data.datapath)
-    
-    dir_to_write = "./tmp/"
-
-    for file in vanilla_files:
-        file_contents = list()
-        print(file)
-        with open(vanilla_files[file][0],"r",encoding="iso8859-1") as f:
-            file_contents.append(f.read())
-        text = preprocess(file_contents[0])
-
-        try:
-            cw.cwparse(text,False)
-        except:
-            print(text)
-
-        
-    return
 
 def extract_all(conflicts,in_vanilla,mods,modpath,outpath):
     by_mod = {}
@@ -320,37 +272,6 @@ def extract_all(conflicts,in_vanilla,mods,modpath,outpath):
 
         os.chdir(outpath)
     os.chdir(current_path)
-import textwrap
-import diff_match_patch
-
-class DiffMatchPatch(dmp.diff_match_patch):
-
-    def diff_prettyText(self, diffs):
-        """Convert a diff array into a pretty Text report.
-        Args:
-          diffs: Array of diff tuples.
-        Returns:
-          Text representation.
-        """
-        results_diff = []
-
-        def parse(sign):
-            return "\n" if len(results_diff) else "", \
-                    textwrap.indent( "%s" % text, sign, lambda line: True )
-
-        # print(diffs)
-        for (op, text) in diffs:
-
-            if op == self.DIFF_INSERT:
-                results_diff.append( "%s%s" % parse( "+ " ) )
-
-            elif op == self.DIFF_DELETE:
-                results_diff.append( "%s%s" % parse( "- " ) )
-
-            elif op == self.DIFF_EQUAL:
-                results_diff.append(textwrap.indent("%s" % text.lstrip('\n'), "  "))
-
-        return "".join(results_diff)
 
 def clean_file_contents(file_content):
     info = list(filter(lambda x: len(x) > 0, list(map(lambda s: s.partition('#')[0].strip(), file_content.split("\n")))))
@@ -363,7 +284,7 @@ def clean_file_contents(file_content):
 
 
 def line_diff(text1,text2):
-    diff_match = DiffMatchPatch()
+    diff_match = dmp.diff_match_patch()
     diff_struct = diff_match.diff_linesToChars(text1, text2)
 
     lineText1 = diff_struct[0] # .chars1
