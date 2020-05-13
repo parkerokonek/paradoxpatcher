@@ -1,16 +1,15 @@
 mod mod_information;
 mod merge_script;
-use mod_information::{ModInfo,ModConflict};
+use mod_information::{ModInfo};
 use clap::{Arg,App};
 use std::path::{PathBuf,Path};
-use std::fs::{self,File,DirEntry};
+use std::fs::{self,File};
 use std::io::prelude::*;
 use std::io::BufReader;
 use serde::Deserialize;
 use regex::Regex;
 use zip::read::ZipArchive;
-use unidiff;
-use pyo3::{*,types::{PyModule,PyString}};
+use pyo3::{*,types::PyModule};
 
 struct ArgOptions {
     config_path: PathBuf,
@@ -67,7 +66,13 @@ fn main() {
     //for i in mod_pack.list_conflicts() {
         //    i.display();
         //}
+    if !args.dry_run {
     let aout = auto_merge(&config, &args , &mod_pack);
+        if let Ok(num_good) = aout {
+            let results: f32 = 100. * (num_good as f32) / (mod_pack.list_conflicts().len() as f32);
+            println!("{}% of merges completed successfully",results);
+        }
+    }
     let mout = write_mod_desc_to_folder(&args, &mod_pack);
         
 }
@@ -264,8 +269,8 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<mod_informati
             let zip_path: PathBuf = [mod_path.to_str()?,&archive[0]].iter().collect();
             let zip_path = find_even_with_case(&zip_path)?;
             let file = File::open(&zip_path).unwrap();
-            let mut reader = BufReader::new(file);
-            let mut zipfile = ZipArchive::new(reader).unwrap();
+            let reader = BufReader::new(file);
+            let zipfile = ZipArchive::new(reader).unwrap();
             
             let files: Vec<&str> = zipfile.file_names().collect();
             
@@ -361,9 +366,17 @@ fn walk_in_dir(dir: &Path, relative: Option<&Path>) -> Vec<PathBuf> {
         }
 }
     
-fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &mod_information::ModPack) -> Result<(),()> {
+fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &mod_information::ModPack) -> Result<u32,()> {
+    let mut successful = 0;
+    let gil = Python::acquire_gil();
+    let py = gil.python();
+    let py_code = merge_script::give_script();
+    let module = PyModule::from_code(py, &py_code, "merge.py", "mergers");
+
         for conf in mod_pack.list_conflicts() {
-            println!("Attempting to merge: {}",conf.path().display());
+            if args.verbose {
+                println!("Attempting to merge: {}",conf.path().display());
+            }
             let mut file_contents: Vec<String> = Vec::new();
             let mut vanilla_file = String::new();
             let try_fetch = vanilla_fetch(conf.path(),config);
@@ -374,11 +387,6 @@ fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &mod_informat
                 return Err(());
             }
             // Requisite setup for python
-
-            let gil = Python::acquire_gil();
-            let py = gil.python();
-            let py_code = merge_script::give_script();
-            let module = PyModule::from_code(py, &py_code, "merge.py", "mergers");
 
             for mod_info in conf.list_mods() {
                 if let Some(current) = mod_pack.get_mod(&mod_info) {
@@ -401,21 +409,32 @@ fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &mod_informat
                 }
             }
 
+            let mut file_content = Ok(None);
 
-            let file_content = py_dif_auto(&vanilla_file, &file_contents, true);
-            
+            if let Ok(good_module) = module {
+                file_content = py_dif_auto(&py,good_module,&vanilla_file, &file_contents, true);
+            } else if let Err(e) = module {
+                eprintln!("Couldn't build code: {:?}",e.to_object(py));
+                return Err(());
+            }
             if let Ok(Some(content)) = &file_content {
                 //println!("{}",content);
                 let try_write = write_to_mod_folder(args, content, conf.path());
+                if try_write.is_ok() {
+                    successful+=1;
+                } else {
+                    eprintln!("{}",try_write.err().unwrap());
+                }
+                continue;
             }
             if let Err(e) = &file_content {
                 //let out = exceptions::OSError::e.to_string();
                 //eprintln!("{:?}",err);
-                eprintln!("Something bad {:?}",e);
+                eprintln!("Error occurred inside of python code {:?}",e);
                 return Err(());
             }
         }
-        Ok(())
+        Ok(successful)
 }
 
 fn relative_folder_path(args: &ArgOptions, path: &Path) -> Result<PathBuf,std::io::Error> {
@@ -468,7 +487,7 @@ fn mod_zip_fetch(dir: &Path, mod_entry: &mod_information::ModInfo) -> Option<Str
         let mut zip_file = ZipArchive::new(reader).unwrap();
         let zip_content = zip_file.by_name(&dir.to_str()?);
         
-        if let Ok(mut content) = zip_content {
+        if let Ok(content) = zip_content {
             let mut output = String::new();
             for byte in content.bytes() {
                 if let Ok(c) = byte {
@@ -478,7 +497,7 @@ fn mod_zip_fetch(dir: &Path, mod_entry: &mod_information::ModInfo) -> Option<Str
                     return None;
                 }
             }
-            return Some(output);
+            Some(output)
         } else {
             None
         }
@@ -494,34 +513,25 @@ fn vanilla_fetch(dir: &Path, config: &ConfigOptions) -> Option<String> {
         file_to_string(&full_path)
 }
 
-fn py_dif_auto(original: &String,others: &[String], verbose: bool) -> Result<Option<String>,()> {
-    let gil = Python::acquire_gil();
-    let py = gil.python();
-    let py_code = merge_script::give_script();
-    let mergers = PyModule::from_code(py, &py_code, "merge.py", "mergers");
-        if let Ok(good_mergers) = mergers {
-            let others: Vec<String> = others.iter().cloned().collect();
-            let auto_result = good_mergers.call1("dif_auto_once",(original.clone(),others,verbose));
-            if let Ok(auto_string) = auto_result {
-                let results = auto_string.extract();
-                if let Ok((valid,output)) = results {
-                if valid {
-                    return Ok(Some(output));
-                }
-                } else if let Err(e) = results {
-                    let err = e.to_object(py);
-                    eprintln!("Couldn't extract result: {:?}",err);
-                    return Err(());
-                }
-            } else if let Err(e) = auto_result {
-                eprintln!("Calling function failed: {:?}",e.to_object(py));
-                return Err(());
+fn py_dif_auto<'p>(py: &'p Python, good_mergers: &PyModule, original: &String,others: &[String], verbose: bool) -> PyResult<Option<String>> {
+    let others: Vec<String> = others.to_vec();
+    let auto_result = good_mergers.call1("dif_auto_once",(original.clone(),others,verbose));
+    if let Ok(auto_string) = auto_result {
+        let results = auto_string.extract();
+        if let Ok((valid,output)) = results {
+            if valid {
+                return Ok(Some(output));
+            } else {
+                eprintln!("This file will need manual merging")
             }
-        } else if let Err(e) = mergers {
-            eprintln!("Couldn't build code: {:?}",e.to_object(py));
-            return Err(());
+        } else if let Err(e) = results {
+            let err = e.to_object(*py);
+            eprintln!("Couldn't extract result: {:?}",err);
+            return Err(e);
         }
-        
-            
+    } else if let Err(e) = auto_result {
+    eprintln!("Calling function failed: {:?}",e.to_object(*py));
+    return Err(e);
+    }
     Ok(None)
 }

@@ -22,12 +22,13 @@ pub struct ModPack {
     conflicts: Vec<ModConflict>,
     in_vanilla: Vec<PathBuf>,
     mod_lookup: HashMap<String,usize>,
+    conflict_lookup: HashMap<String,usize>,
     valid_paths: Vec<PathBuf>,
 }
 
 impl ModPack {
     pub fn new() -> Self {
-        ModPack{mod_list: Vec::new(),conflicts: Vec::new(), in_vanilla: Vec::new(),mod_lookup: HashMap::new(), valid_paths: Vec::new()}
+        ModPack{mod_list: Vec::new(),conflicts: Vec::new(), in_vanilla: Vec::new(),mod_lookup: HashMap::new(), conflict_lookup: HashMap::new(), valid_paths: Vec::new()}
     }
 
     pub fn restrict_paths(mut self, valid_paths: &[PathBuf]) -> Self {
@@ -104,6 +105,12 @@ impl ModPack {
 
     pub fn generate_conflicts(&mut self) {
         self.conflicts = ModConflict::compare_mods(&self.mod_list, if self.valid_paths.is_empty() {None} else {Some(&self.valid_paths)});
+        self.conflict_lookup.clear();
+        for (i,conf) in self.conflicts.iter().enumerate() {
+            let key: String = conf.path().to_str().unwrap().to_owned();
+            let value: usize = i;
+            self.conflict_lookup.insert(key, value);
+        }
     }
 
     pub fn register_vanilla(&mut self, files: &[&Path]) {
