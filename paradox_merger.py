@@ -376,6 +376,35 @@ def line_diff(text1,text2):
     #print(diff_match.diff_prettyText(diffs))
     return diffs
 
+def dif_auto_once(base_file,mod_files,verbose):
+    orig = base_file
+    diffs = []
+    differ = dmp.diff_match_patch()
+    for file in mod_files:
+        if len(file) < 3:
+            pass
+        bob = line_diff(orig,file)
+        diffs.append(bob)
+        patches = differ.patch_make(bob)
+    patches = list(map(lambda d: differ.patch_make(orig,d),diffs))
+    patches.sort(key=lambda x: len(x),reverse=False)
+    new_text = orig
+    no_good = False
+    for patch in patches:
+        tmp_text, results = differ.patch_apply(patch,new_text)
+        for i in results:
+            if not i:
+                no_good = True
+        if no_good:
+            break
+        new_text = tmp_text
+    if no_good:
+        if verbose:
+            print("This file will need manual merging")      
+    else:
+        return new_text
+    return None
+
 def dif_auto(conflicts,in_vanilla,mods,modpath,outpath,verbose=False):
     shutil.rmtree(outpath+"/merged_patch/",ignore_errors=True)
     Path(outpath+"/merged_patch/").mkdir(mode=0o0777)

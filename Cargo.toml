@@ -10,7 +10,7 @@ edition = "2018"
 unidiff = "0.3"
 toml = "0.5"
 zip = "0.5"
-rose_tree = "0.2"
 clap = "2"
 serde = {version = "1.0", features = ["derive"]}
 regex = "1"
+pyo3 = "0.9"

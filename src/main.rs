@@ -1,4 +1,5 @@
 mod mod_information;
+mod merge_script;
 use mod_information::{ModInfo,ModConflict};
 use clap::{Arg,App};
 use std::path::{PathBuf,Path};
@@ -9,6 +10,7 @@ use serde::Deserialize;
 use regex::Regex;
 use zip::read::ZipArchive;
 use unidiff;
+use pyo3::{*,types::{PyModule,PyString}};
 
 struct ArgOptions {
     config_path: PathBuf,
@@ -17,6 +19,14 @@ struct ArgOptions {
     verbose: bool,
     game_id: String,
     patch_name: String,
+}
+
+impl ArgOptions {
+    fn folder_name(&self) -> String {
+        let mut mod_folder = self.patch_name.clone();
+        mod_folder.make_ascii_lowercase();
+        mod_folder
+    }
 }
 
 #[derive(Deserialize,Debug)]
@@ -57,7 +67,8 @@ fn main() {
     //for i in mod_pack.list_conflicts() {
         //    i.display();
         //}
-        let out = auto_merge(&config, &mod_pack);
+    let aout = auto_merge(&config, &args , &mod_pack);
+    let mout = write_mod_desc_to_folder(&args, &mod_pack);
         
 }
     
@@ -101,7 +112,7 @@ fn parse_args() -> ArgOptions {
         let dry_run = args.is_present("dry-run");
         let verbose = args.is_present("verbose");
         let game_id = String::from(args.value_of("game_id").unwrap_or(""));
-        let patch_name = String::from("merged_patch");
+        let patch_name: String = String::from(args.value_of("patch_name").unwrap_or("merged_patch"));
         
         ArgOptions{config_path,extract,dry_run,verbose,game_id,patch_name}
 }
@@ -144,9 +155,17 @@ fn file_to_string(file_path: &Path) -> Option<String> {
         let mut file = File::open(file_path);
         if let Ok(mut file_open) = file {
             let mut contents = String::new();
-            if let Ok(_e) = file_open.read_to_string(&mut contents) {
-                return Some(contents);
+            for byte in file_open.bytes() {
+                if let Ok(c) = byte {
+                    contents.push(c as char);
+                } else if let Err(e) = byte {
+                    eprintln!("{}",e);
+                    return None;
+                }
             }
+            return Some(contents);
+        } else if let Err(e) = file {
+            eprintln!("{}",e);
         }
         
         None
@@ -342,17 +361,25 @@ fn walk_in_dir(dir: &Path, relative: Option<&Path>) -> Vec<PathBuf> {
         }
 }
     
-fn auto_merge(config: &ConfigOptions, mod_pack: &mod_information::ModPack) -> Result<(),()> {
+fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &mod_information::ModPack) -> Result<(),()> {
         for conf in mod_pack.list_conflicts() {
             println!("Attempting to merge: {}",conf.path().display());
             let mut file_contents: Vec<String> = Vec::new();
             let mut vanilla_file = String::new();
-            if let Some(contents) = vanilla_fetch(conf.path(),config) {
+            let try_fetch = vanilla_fetch(conf.path(),config);
+            if let Some(contents) = try_fetch {
                 vanilla_file = contents;
             } else {
                 eprintln!("Error opening vanilla file for comparison: {}",conf.path().display());
                 return Err(());
             }
+            // Requisite setup for python
+
+            let gil = Python::acquire_gil();
+            let py = gil.python();
+            let py_code = merge_script::give_script();
+            let module = PyModule::from_code(py, &py_code, "merge.py", "mergers");
+
             for mod_info in conf.list_mods() {
                 if let Some(current) = mod_pack.get_mod(&mod_info) {
                     if current.is_zip() {
@@ -373,23 +400,67 @@ fn auto_merge(config: &ConfigOptions, mod_pack: &mod_information::ModPack) -> Re
                     return Err(());
                 }
             }
-            println!("Doing diffs");
-            for i in file_contents {
 
-                //let out = dissimilar::diff(&vanilla_file,&i);
-                println!("Generated");
-                //println!("{:?}",out);
+
+            let file_content = py_dif_auto(&vanilla_file, &file_contents, true);
+            
+            if let Ok(Some(content)) = &file_content {
+                //println!("{}",content);
+                let try_write = write_to_mod_folder(args, content, conf.path());
+            }
+            if let Err(e) = &file_content {
+                //let out = exceptions::OSError::e.to_string();
+                //eprintln!("{:?}",err);
+                eprintln!("Something bad {:?}",e);
+                return Err(());
             }
         }
         Ok(())
 }
+
+fn relative_folder_path(args: &ArgOptions, path: &Path) -> Result<PathBuf,std::io::Error> {
+    let current_dir = std::env::current_dir()?;
+    let mut mod_folder = args.patch_name.clone();
+    mod_folder.make_ascii_lowercase();
+    let mod_folder = Path::new(&mod_folder);
+    let full_path: PathBuf = [&current_dir,mod_folder,path].iter().collect();
+    Ok(full_path)
+}
+
+fn write_to_mod_folder(args: &ArgOptions, contents: &str, path: &Path) -> Result<(),std::io::Error> {
+    let full_path = relative_folder_path(args, path)?;
+    let almost_path = match full_path.parent() {Some(good) => Ok(good),None => Err(std::io::Error::from_raw_os_error(1))}?;
+    let _ = fs::create_dir_all(almost_path)?;
     
+    fs::write(full_path,contents)?;
+
+    Ok(())
+}
+
+fn write_mod_desc_to_folder(args: &ArgOptions, mod_pack: &mod_information::ModPack) -> Result<(),std::io::Error> {
+    let mut mod_file_name = PathBuf::from(args.folder_name());
+    mod_file_name.set_extension("mod");
+    let full_path = relative_folder_path(args, &mod_file_name)?;
+
+    let mut file_contents = format!("name = \"{}\"\narchive = \"mod/{}.zip\"\n",args.patch_name,args.folder_name());
+
+
+    
+    file_contents.push_str("dependencies = {\n");
+    for dep in mod_pack.load_order() {
+        let dep_text = format!("\"\\\"{}\\\"\"\n",dep);
+        file_contents.push_str(&dep_text);
+    }
+    file_contents.push_str("}\n");
+
+    fs::write(full_path,file_contents)?;
+    Ok(())
+}
     
 fn mod_zip_fetch(dir: &Path, mod_entry: &mod_information::ModInfo) -> Option<String> {
         if !mod_entry.is_zip() {
             return None;
         }
-        println!("Opening zip");
         let zip_archive = mod_entry.get_data_path();
         let zip_path = find_even_with_case(&zip_archive)?;
         let file = File::open(&zip_path).unwrap();
@@ -399,26 +470,58 @@ fn mod_zip_fetch(dir: &Path, mod_entry: &mod_information::ModInfo) -> Option<Str
         
         if let Ok(mut content) = zip_content {
             let mut output = String::new();
-            let err = content.read_to_string(&mut output);
-            if err.is_err() {
-                None
-            } else {
-                Some(output)
+            for byte in content.bytes() {
+                if let Ok(c) = byte {
+                    output.push(c as char);
+                } else if let Err(e) = byte {
+                    eprintln!("{}",e);
+                    return None;
+                }
             }
+            return Some(output);
         } else {
             None
         }
 }
     
 fn mod_path_fetch(dir: &Path, mod_entry: &mod_information::ModInfo) -> Option<String> {
-    println!("Opening dir");
         let full_path: PathBuf = [mod_entry.get_data_path(),dir].iter().collect();
         file_to_string(&full_path)
 }
     
 fn vanilla_fetch(dir: &Path, config: &ConfigOptions) -> Option<String> {
-    println!("Opening vanilla");
         let full_path: PathBuf = [&config.data_path,dir].iter().collect();
-        println!("{}",full_path.display());
         file_to_string(&full_path)
+}
+
+fn py_dif_auto(original: &String,others: &[String], verbose: bool) -> Result<Option<String>,()> {
+    let gil = Python::acquire_gil();
+    let py = gil.python();
+    let py_code = merge_script::give_script();
+    let mergers = PyModule::from_code(py, &py_code, "merge.py", "mergers");
+        if let Ok(good_mergers) = mergers {
+            let others: Vec<String> = others.iter().cloned().collect();
+            let auto_result = good_mergers.call1("dif_auto_once",(original.clone(),others,verbose));
+            if let Ok(auto_string) = auto_result {
+                let results = auto_string.extract();
+                if let Ok((valid,output)) = results {
+                if valid {
+                    return Ok(Some(output));
+                }
+                } else if let Err(e) = results {
+                    let err = e.to_object(py);
+                    eprintln!("Couldn't extract result: {:?}",err);
+                    return Err(());
+                }
+            } else if let Err(e) = auto_result {
+                eprintln!("Calling function failed: {:?}",e.to_object(py));
+                return Err(());
+            }
+        } else if let Err(e) = mergers {
+            eprintln!("Couldn't build code: {:?}",e.to_object(py));
+            return Err(());
+        }
+        
+            
+    Ok(None)
 }
