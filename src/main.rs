@@ -1,6 +1,6 @@
-mod mod_information;
+mod moddata;
 mod merge_script;
-use mod_information::{ModInfo,ModPack,ModConflict};
+use moddata::{mod_info::ModInfo,mod_pack::ModPack,mod_conflict::ModConflict};
 use clap::{Arg,App};
 use std::path::{PathBuf,Path};
 use std::fs::{self,File};

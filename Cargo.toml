@@ -13,4 +13,12 @@ zip = "0.5"
 clap = "2"
 serde = {version = "1.0", features = ["derive"]}
 regex = "1"
-pyo3 = "0.9"
+pyo3 = "0.10"
+
+[dependencies.gtk]
+version = "0.8.1"
+features = ["v3_16"]
+
+[dependencies.gio]
+version = "0.8.1"
+features = ["v2_44"]
