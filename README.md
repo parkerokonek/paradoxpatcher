@@ -1,30 +1,45 @@
 # Parker's Paradox Patcher
-## Installation
-Requires Python 3.8 and the following packages for Python/pip
-* toml
-* pyside2
+This project is mostly aimed at generating large Crusader Kings 2 modpacks for private use. The patcher reads the settings.txt file of the game and uses those mods as the list to determine mod conflicts and what mod content to package. By default, the patcher will only generate a mod that contains the files which conflicted and an accompanying .mod description file that lists its dependencies to ensure load order. 
+
+These patches seem to work for most mods, but run into issues specifically with overhaul mods, or other mods which conflict in the same files as their specified replacement paths.
+
+Using the extract flag is recommended, as it ensures that every person using the modpack has identical data and only needs to enable a single mod.
+## Building
+Not recommended at the moment as the project has strange build requirements due to using Python 3's Diff Match and Patch implementation. The current state of the project is experimental at best.
+
+Currently Requires Python 3.5 or higher, Rust Nightly, and Google's Diff Match Patch for python3.
+Then use cargo to compile.
 
 ## Usage
 ```
-usage: paradox_merger.py [-h] [-c CONFIG] [-x] [-d] [-v] game_id patch_name
+USAGE:
+    paradoxmerger [FLAGS] [OPTIONS] <patch_name> [game_id]
 
-Merge Paradox mod conflicts.
+FLAGS:
+    -d, --dry-run    list file conflicts without merging
+    -x, --extract    extract all non-conflicting files to a folder
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+    -v, --verbose    print information about processed mods
 
-positional arguments:
-  game_id               game in the config to use
-  patch_name            name of the generated mod
+OPTIONS:
+    -c, --config <CONFIG_FILE>    configuration file to load, defaults to current directory
 
-optional arguments:
-  -h, --help            show this help message and exit
-  -c CONFIG, --config CONFIG
-                        configuration file to load, defaults to current directory
-  -x, --extract         extract all non-conflicting files to a folder
-  -d, --dry-run         list file conflicts without merging
-  -v, --verbose         print information about processed mods
+ARGS:
+    <patch_name>    name of the generated mod
+    <game_id>       game in the config to use
 ```
 
 An example merging mod conflicts for CK2 using the supplied config file.
 ```bash
 cd PATH/TO/MERGER
-python3 ./paradox_merger.py CK2 "Merged Patch"
+paradoxmerger CK2 "Merged Patch"
 ```
+## Appendix
+[Diff Match Patch](https://github.com/google/diff-match-patch): library used for diffing mod files and patching them together
+
+[paradox-tools](https://github.com/taw/paradox-tools): a set of Paradox modding utilities written in Ruby 
+
+[cwtools](https://github.com/tboby/cwtools): a library for manipulating Paradox scripts written in F#
+
+[Pdoxcl2Sharp](https://github.com/nickbabcock/Pdoxcl2Sharp): a C# library for parsing and manipulating Paradox scripts
