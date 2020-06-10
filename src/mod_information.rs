@@ -246,4 +246,8 @@ impl ModInfo {
     pub fn get_data_path(&self) -> &Path {
         &self.data_path
     }
+
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
 }

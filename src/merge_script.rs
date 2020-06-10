@@ -51,10 +51,7 @@ def dif_auto_once(base_file,mod_files,verbose):
                 no_good = True
         if no_good:
             break
-        new_text = tmp_text
-    if no_good:
-        if verbose:
-            print("This file will need manual merging")      
+        new_text = tmp_text    
     else:
         return (True,new_text)
     return (False,"")
