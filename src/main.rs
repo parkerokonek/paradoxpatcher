@@ -1,6 +1,6 @@
 mod moddata;
 mod merge_script;
-use moddata::{mod_info::ModInfo,mod_pack::ModPack,mod_conflict::ModConflict};
+use moddata::{mod_info::ModInfo,mod_pack::ModPack};
 use clap::{Arg,App};
 use std::path::{PathBuf,Path};
 use std::fs::{self,File};
@@ -138,7 +138,7 @@ fn parse_args() -> ArgOptions {
 }
     
 fn parse_configs(arguments: &ArgOptions) -> Result<ConfigOptions,std::io::Error> {
-        let mut config_file = File::open(&arguments.config_path);
+        let config_file = File::open(&arguments.config_path);
         if let Ok(mut file_ok) = config_file {
             let mut contents = String::new();
             let err = file_ok.read_to_string(&mut contents);
@@ -172,8 +172,8 @@ fn parse_configs(arguments: &ArgOptions) -> Result<ConfigOptions,std::io::Error>
 }
     
 fn file_to_string(file_path: &Path) -> Option<String> {
-        let mut file = File::open(file_path);
-        if let Ok(mut file_open) = file {
+        let file = File::open(file_path);
+        if let Ok(file_open) = file {
             let mut contents = String::new();
             for byte in file_open.bytes() {
                 if let Ok(c) = byte {
@@ -212,7 +212,6 @@ fn grep(input: &str, re: &Regex, all_matches: bool) -> Vec<String> {
 }
     
 fn collect_dependencies(mod_path: &Path) -> Vec<String> {
-        let escape = r#"\""#;
         let re_dep = Regex::new(r#"(?m)dependencies[^}]+"#).unwrap();
         let re_sing = Regex::new(r#""[^"]+""#).unwrap();
         let results = fgrep(mod_path,&re_dep,false);
@@ -270,7 +269,7 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
         let modmod_content = file_to_string(&modmod_path).unwrap_or_default();
         
         let archive: Vec<String> = grep(&modmod_content, &re_archive, false).iter().map(|x| trim_quotes(x) ).collect();
-        let mut path: Vec<String> = grep(&modmod_content, &re_paths, false).iter().map(|x| trim_quotes(x)).collect();
+        let path: Vec<String> = grep(&modmod_content, &re_paths, false).iter().map(|x| trim_quotes(x)).collect();
         let name: Vec<String> = grep(&modmod_content, &re_names, false).iter().map(|x| trim_quotes(x)).collect();
         let replace_paths: Vec<PathBuf> = grep(&modmod_content, &re_replace, true).iter().map(|x| PathBuf::from(trim_quotes(x))).collect();
         
@@ -330,7 +329,7 @@ fn files_in_vanilla(config: &ConfigOptions) -> Vec<PathBuf> {
         let mut out = Vec::new();
         for i in &check_paths {
             let mut path_vec: Vec<PathBuf> = Vec::new();
-            let bob = |x| {path_vec.push(x)};
+            let _bob = |x| {path_vec.push(x)};
             let mut results = walk_in_dir(&i,Some(&vanilla_path));
             out.append(&mut results);
         }
@@ -442,14 +441,14 @@ fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack) -> 
                 //Process vanilla file
                 let mod_folder = args.folder_name() + "_bad";
                 let cur_folder: PathBuf = [&mod_folder,"vanilla"].iter().collect();
-                let try_write = write_to_mod_folder(&cur_folder, vanilla_file.as_bytes(), conf.path());
+                let _try_write = write_to_mod_folder(&cur_folder, vanilla_file.as_bytes(), conf.path());
 
                 //Process the rest of the files
                 for (file_index,file_content) in file_indices.iter().zip(file_contents) {
                     let cur_mod = &conf.list_mods()[*file_index];
                     let cur_mod = mod_pack.get_mod(cur_mod).unwrap();
                     let cur_folder: PathBuf = [&mod_folder,cur_mod.get_name()].iter().collect();
-                    let try_write = write_to_mod_folder(&cur_folder, file_content.as_bytes(), conf.path());
+                    let _try_write = write_to_mod_folder(&cur_folder, file_content.as_bytes(), conf.path());
                 }
             } else if let Ok(Some(content)) = &file_content {
                 //println!("{}",content);
@@ -466,14 +465,14 @@ fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack) -> 
                 //Process vanilla file
                 let mod_folder = args.folder_name() + "_bad";
                 let cur_folder: PathBuf = [&mod_folder,"vanilla"].iter().collect();
-                let try_write = write_to_mod_folder(&cur_folder, vanilla_file.as_bytes(), conf.path());
+                let _try_write = write_to_mod_folder(&cur_folder, vanilla_file.as_bytes(), conf.path());
 
                 //Process the rest of the files
                 for (file_index,file_content) in file_indices.iter().zip(file_contents) {
                     let cur_mod = &conf.list_mods()[*file_index];
                     let cur_mod = mod_pack.get_mod(cur_mod).unwrap();
                     let cur_folder: PathBuf = [&mod_folder,cur_mod.get_name()].iter().collect();
-                    let try_write = write_to_mod_folder(&cur_folder, file_content.as_bytes(), conf.path());
+                    let _try_write = write_to_mod_folder(&cur_folder, file_content.as_bytes(), conf.path());
 
                 } 
             }
