@@ -1,5 +1,4 @@
 mod moddata;
-mod merge_script;
 pub use moddata::{mod_info::ModInfo,mod_pack::ModPack};
 use clap::{Arg,App};
 use std::path::{PathBuf,Path};
