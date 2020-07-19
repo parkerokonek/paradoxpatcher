@@ -16,9 +16,9 @@ regex = "1"
 pyo3 = "0.10"
 
 [dependencies.gtk]
-version = "0.8.1"
+version = "0.9"
 features = ["v3_16"]
 
 [dependencies.gio]
-version = "0.8.1"
+version = "0.9"
 features = ["v2_44"]
