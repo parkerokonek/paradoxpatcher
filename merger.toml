@@ -5,4 +5,4 @@ valid_paths = [ "history", "common", "decisions", "events", "localisation" ]
 [EU4]
 modpath = "/home/parker/.local/share/Paradox Interactive/Europa Universalis IV"
 datapath = "/home/parker/.steam/steam/steamapps/common/Europa Universalis IV"
-valid_paths = [ "history", "common", "decisions", "events", "localisation", "missions", "hints" ]
+valid_paths = [ "history", "common", "decisions", "events", "localisation", "missions", "hints", "map", "gfx" ]

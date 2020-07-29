@@ -13,7 +13,7 @@ fn main() {
     mod_pack.register_vanilla(&val_ref);
     
     mod_pack.add_mods(&mod_list, true, true);
-    
+
     if !args.dry_run {
         if args.extract{
             println!("Extracting all files, this could take some time.");
