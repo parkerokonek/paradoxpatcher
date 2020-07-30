@@ -7,7 +7,7 @@ Using the extract flag is recommended, as it ensures that every person using the
 ## Building
 Not recommended at the moment as the project has strange build requirements due to using Python 3's Diff Match and Patch implementation. The current state of the project is experimental at best.
 
-Currently Requires Python 3.5 or higher, Rust Nightly, and Google's Diff Match Patch for python3.
+Currently Requires Python 3.5 or higher, Rust (Stable or Nightly), and Google's Diff Match Patch for python3.
 Then use cargo to compile.
 
 ## Usage
