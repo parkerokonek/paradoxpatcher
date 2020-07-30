@@ -1,16 +1,24 @@
 mod moddata;
 pub use moddata::{mod_info::ModInfo,mod_pack::ModPack};
-use clap::{Arg,App};
+
 use std::path::{PathBuf,Path};
 use std::fs::{self,File};
-use std::io::prelude::*;
-use std::io::BufReader;
+use std::io::{prelude::*,BufReader};
+use std::collections::HashMap;
+
+use clap::{Arg,App};
+
 use serde::Deserialize;
+
 use regex::Regex;
+
 use zip::read::ZipArchive;
 use zip::write::ZipWriter;
+
 use pyo3::{*,types::PyModule};
-use std::collections::HashMap;
+
+use encoding_rs::WINDOWS_1252;
+use encoding_rs_io::DecodeReaderBytesBuilder;
 
 pub struct ArgOptions {
     pub config_path: PathBuf,
