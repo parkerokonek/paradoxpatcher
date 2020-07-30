@@ -1,5 +1,3 @@
-pub fn give_script() -> String {
-let string = r#"
 import diff_match_patch as dmp
 import shutil
 from pathlib import Path
@@ -55,5 +53,3 @@ def dif_auto_once(base_file,mod_files,verbose):
     else:
         return (True,new_text)
     return (False,"")
-"#.to_string();
-string}
