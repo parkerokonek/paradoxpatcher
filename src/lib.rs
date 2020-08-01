@@ -628,3 +628,120 @@ pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, config: &ConfigOptio
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn test_diff_two_line_changes() {
+        // Setup Python runtime
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let py_code = include_str!("merge_script.py");
+        let module = PyModule::from_code(py, &py_code, "merge.py", "mergers");
+        let good_module = module.unwrap();
+
+        // Test with some data
+        let source = "OR = \r\n{\r\n\ttier = KING\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        let change_tier = "OR = \r\n{\r\n\ttier = COUNT\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        let change_cash = "OR = \r\n{\r\n\ttier = KING\r\n\teggs = 89\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        
+        let both_changes = "OR = \r\n{\r\n\ttier = COUNT\r\n\teggs = 89\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        
+        assert_eq!(py_dif_auto(&py,good_module, &source, &[change_tier,change_cash], false).unwrap(),Some(both_changes));
+    }
+    
+    #[test]
+    fn test_diff_two_removals() {
+        // Setup Python runtime
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let py_code = include_str!("merge_script.py");
+        let module = PyModule::from_code(py, &py_code, "merge.py", "mergers");
+        let good_module = module.unwrap();
+
+        // Test with some data
+        let source = "OR = \r\n{\r\n\ttier = KING\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        let no_tier = "OR = \r\n{\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        let no_cash = "OR = \r\n{\r\n\ttier = KING\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        
+        let both_changes = "OR = \r\n{\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        
+        assert_eq!(py_dif_auto(&py,good_module, &source, &[no_tier,no_cash], false).unwrap(),Some(both_changes));
+    }
+    
+    #[test]
+    fn test_diff_remove_first() {
+        // Setup Python runtime
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let py_code = include_str!("merge_script.py");
+        let module = PyModule::from_code(py, &py_code, "merge.py", "mergers");
+        let good_module = module.unwrap();
+
+        // Test with some data
+        let source = "OR = \r\n{\r\n\ttier = KING\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        let no_tier = "OR = \r\n{\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        let change_cash = "OR = \r\n{\r\n\ttier = KING\r\n\t AND = {\r\n\tbob = jim\r\n\t zoop = zorp}\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        
+        let both_changes = "OR = \r\n{\r\n\t AND = {\r\n\tbob = jim\r\n\t zoop = zorp}\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        
+        assert_eq!(py_dif_auto(&py,good_module,&source, &[no_tier,change_cash], false).unwrap(),Some(both_changes));
+    }
+    
+    #[test]
+    fn test_two_conflicting_changes() {
+        // Setup Python runtime
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let py_code = include_str!("merge_script.py");
+        let module = PyModule::from_code(py, &py_code, "merge.py", "mergers");
+        let good_module = module.unwrap();
+
+        // Test with some data
+        let source = "OR = \r\n{\r\n\ttier = KING\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        let change_tier_1 = "OR = \r\n{\r\n\ttier = DUKE\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        let change_tier_2 = "OR = \r\n{\r\n\ttier = COUNT\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        
+        assert_eq!(py_dif_auto(&py,good_module, &source, &[change_tier_1,change_tier_2], false).unwrap(),None, "Conflicts on the same line should never succeed.");
+    }
+    
+    
+    #[test]
+    fn test_three_conflicting_changes() {
+        // Setup Python runtime
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let py_code = include_str!("merge_script.py");
+        let module = PyModule::from_code(py, &py_code, "merge.py", "mergers");
+        let good_module = module.unwrap();
+
+        // Test with some data
+        let source = "OR = \r\n{\r\n\ttier = KING\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        let change_tier_1 = "OR = \r\n{\r\n\ttier = DUKE\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        let change_tier_2 = "OR = \r\n{\r\n\ttier = COUNT\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        let change_tier_3 = "OR = \r\n{\r\n\ttier = EMPEROR\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        
+        assert_eq!(py_dif_auto(&py,good_module, &source, &[change_tier_1,change_tier_2,change_tier_3], false).unwrap(),None, "Conflicts on the same line should never succeed.");
+    }
+    
+    #[test]
+    fn test_conflicting_character_changes() {
+        // Setup Python runtime
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let py_code = include_str!("merge_script.py");
+        let module = PyModule::from_code(py, &py_code, "merge.py", "mergers");
+        let good_module = module.unwrap();
+
+        // Test with some data
+        let source = "OR = \r\n{\r\n\ttier = KING\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        let source_a = "OR = \r\n{\r\n\ttier = KANG\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        let source_o = "OR = \r\n{\r\n\ttier = KONG\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        
+        // Result should be a failure
+        assert_eq!(py_dif_auto(&py,good_module, &source,&[source_a.clone(),source_o.clone()],false).unwrap(),None, "Conflicting entries on a line, even by a single character, should not produce output text.");
+        // Result should not depend on patch order if it will fail
+        assert_eq!(py_dif_auto(&py,good_module, &source,&[source_a.clone(),source_o.clone()],false).unwrap(),py_dif_auto(&py,good_module, &source,&[source_o.clone(),source_a.clone()],false).unwrap(),"Result can succeed based off of the order of the changed files.");
+    }
+}
