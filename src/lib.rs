@@ -1,4 +1,5 @@
 mod moddata;
+mod merge_diff;
 pub use moddata::{mod_info::ModInfo,mod_pack::ModPack};
 
 use std::path::{PathBuf,Path};
@@ -15,7 +16,7 @@ use regex::Regex;
 use zip::read::ZipArchive;
 use zip::write::ZipWriter;
 
-use pyo3::{*,types::PyModule};
+use merge_diff::diff_single_conflict;
 
 use encoding_rs::WINDOWS_1252;
 use encoding_rs_io::DecodeReaderBytesBuilder;
@@ -351,10 +352,6 @@ fn walk_in_dir(dir: &Path, relative: Option<&Path>) -> Vec<PathBuf> {
     
 pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack) -> Result<u32,()> {
     let mut successful = 0;
-    let gil = Python::acquire_gil();
-    let py = gil.python();
-    let py_code = include_str!("merge_script.py");
-    let module = PyModule::from_code(py, &py_code, "merge.py", "mergers");
 
         for conf in mod_pack.list_conflicts() {
             if args.verbose {
@@ -365,7 +362,7 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
             let mut vanilla_file = String::new();
             let try_fetch = vanilla_fetch(conf.path(),config);
             if let Some(contents) = try_fetch {
-                vanilla_file = contents;
+                vanilla_file = normalize_line_endings(contents);
             } else {
                 eprintln!("Error opening vanilla file for comparison: {}",conf.path().display());
                 return Err(());
@@ -377,14 +374,14 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                     if current.is_zip() {
                         if let Some(contents) = mod_zip_fetch(conf.path(), current) {
                             //println!("{}",contents);
-                            file_contents.push(contents);
+                            file_contents.push(normalize_line_endings(contents));
                             file_indices.push(idx);
                         } else {
                             eprintln!("Error unpacking file in previously registered .zip: {}",mod_info);
                         }
                     } else if let Some(contents) = mod_path_fetch(conf.path(), current) {
                         //println!("{}",contents);
-                        file_contents.push(contents);
+                        file_contents.push(normalize_line_endings(contents));
                         file_indices.push(idx);
                     } else {
                         eprintln!("Error unpacking file in previously registered folder: {}",mod_info);
@@ -395,16 +392,9 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                 }
             }
 
-            let mut file_content = Ok(None);
+            let mut file_content = diff_single_conflict(&vanilla_file, &file_contents, false);
 
-            if let Ok(good_module) = module {
-                file_content = py_dif_auto(&py,good_module,&vanilla_file, &file_contents, true);
-            } else if let Err(e) = module {
-                eprintln!("Couldn't build code: {:?}",e.to_object(py));
-                return Err(());
-            }
-
-            if let Ok(None) = file_content {
+            if file_content.is_none() {
                 eprintln!("This file will need manual merging: {}",conf.path().display());
 
                 //Process vanilla file
@@ -419,7 +409,7 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                     let cur_folder: PathBuf = [&mod_folder,cur_mod.get_name()].iter().collect();
                     let _try_write = write_to_mod_folder(&cur_folder, file_content.as_bytes(), conf.path());
                 }
-            } else if let Ok(Some(content)) = &file_content {
+            } else if let Some(content) = &file_content {
                 //println!("{}",content);
                 let mod_folder = args.folder_name();
                 let mod_folder: &Path = Path::new(&mod_folder);
@@ -444,12 +434,6 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                     let _try_write = write_to_mod_folder(&cur_folder, file_content.as_bytes(), conf.path());
 
                 } 
-            }
-            if let Err(e) = &file_content {
-                //let out = exceptions::OSError::e.to_string();
-                //eprintln!("{:?}",err);
-                eprintln!("Error occurred inside of python code {:?}",e);
-                return Err(());
             }
         }
         Ok(successful)
@@ -502,7 +486,7 @@ pub fn write_mod_desc_to_folder(args: &ArgOptions, mod_pack: &ModPack) -> Result
         file_contents.push_str(&dep_text);
     }
     file_contents.push_str("}\n");
-
+    let _result = fs::create_dir_all(full_path.parent().unwrap());
     fs::write(full_path,file_contents)?;
     Ok(())
 }
@@ -578,29 +562,6 @@ fn vanilla_fetch(dir: &Path, config: &ConfigOptions) -> Option<String> {
         file_to_string(&full_path)
 }
 
-fn py_dif_auto<'p>(py: &'p Python, good_mergers: &PyModule, original: &str, others: &[String], verbose: bool) -> PyResult<Option<String>> {
-    let others: Vec<String> = others.to_vec();
-    let auto_result = good_mergers.call1("dif_auto_once",(original.to_owned(),others,verbose));
-    if let Ok(auto_string) = auto_result {
-        let results = auto_string.extract();
-        if let Ok((valid,output)) = results {
-            if valid {
-                return Ok(Some(output));
-            } else {
-                return Ok(None);
-            }
-        } else if let Err(e) = results {
-            let err = e.to_object(*py);
-            eprintln!("Couldn't extract result: {:?}",err);
-            return Err(e);
-        }
-    } else if let Err(e) = auto_result {
-    eprintln!("Calling function failed: {:?}",e.to_object(*py));
-    return Err(e);
-    }
-    Ok(None)
-}
-
 pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, config: &ConfigOptions, to_zip: bool) {
     let zip_target = args.folder_name();
     let zip_target: PathBuf = [&zip_target,".zip"].iter().collect();
@@ -627,4 +588,9 @@ pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, config: &ConfigOptio
             eprintln!("Error looking up previously registered mod: {}",mod_idx);
         }
     }
+}
+
+fn normalize_line_endings(data: String) -> String {
+    let tmp = data.replace("\r\n", "\n");
+    tmp.replace("\n", "\r\n")
 }

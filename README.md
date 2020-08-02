@@ -8,10 +8,12 @@ These patches seem to work for most mods, but run into issues specifically with 
 
 Using the extract flag is recommended, as it ensures that every person using the modpack has identical data and only needs to enable a single mod.
 ## Building
-Not recommended at the moment as the project has strange build requirements due to using Python 3's Diff Match and Patch implementation. The current state of the project is experimental at best.
-
-Currently Requires Python 3.5 or higher, Rust (Stable or Nightly), and Google's Diff Match Patch for python3.
-Then use cargo to compile.
+The current state of the project is experimental at best.
+Install cargo and clone the repository, then cd to the folder and run:
+```
+cargo build --release
+```
+Requires rust's cargo/rustup to compile.
 
 ## Usage
 ```
