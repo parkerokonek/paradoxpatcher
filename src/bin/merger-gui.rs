@@ -42,7 +42,7 @@ fn build_ui(application: &gtk::Application, arg_options: &ArgOptions, conf_optio
     let button_scan: Button = builder.get_object("button_scan").expect("Couldn't get scan button.");
 
     button_scan.connect_clicked(|_| {
-        let mut mod_pack = ModPack::new().restrict_paths(&conf_options.valid_paths);
+        //let mut mod_pack = ModPack::new().restrict_paths(&conf_options.valid_paths);
         
     });
 
