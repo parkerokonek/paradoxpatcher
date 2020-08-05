@@ -10,17 +10,32 @@ edition = "2018"
 unidiff = "0.3"
 toml = "0.5"
 zip = "0.5"
-clap = "2"
+clap = {version = "2", optional = true}
 serde = {version = "1.0", features = ["derive"]}
 regex = "1"
 encoding_rs = "0.8"
 encoding_rs_io = "0.1"
 diff_match_patch = "0.1"
 
+
 [dependencies.gtk]
 version = "0.9"
 features = ["v3_16"]
+optional = true
 
 [dependencies.gio]
 version = "0.9"
 features = ["v2_44"]
+optional = true
+
+[features]
+command-line = ["clap"]
+gtk-interface= ["gtk","gio"]
+
+[[bin]]
+name = "merger-cli"
+required-features = ["command-line"]
+
+[[bin]]
+name = "merger-gui"
+required-features = ["gtk-interface"]
