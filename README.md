@@ -1,6 +1,8 @@
 # Parker's Paradox Patcher
 
-[![Action Status](https://github.com/parkerokonek/paradoxpatcher/workflows/Build/badge.svg)](https://github.com/parkerokonek/paradoxpatcher/actions) ![Tests](https://github.com/parkerokonek/paradoxpatcher/workflows/Tests/badge.svg)
+![GUI Build](https://github.com/parkerokonek/paradoxpatcher/workflows/BuildGUI/badge.svg)
+![CLI Build](https://github.com/parkerokonek/paradoxpatcher/workflows/BuildCLI/badge.svg)
+![Tests](https://github.com/parkerokonek/paradoxpatcher/workflows/Tests/badge.svg)
 
 This project is mostly aimed at generating large Crusader Kings 2 modpacks for private use. The patcher reads the settings.txt file of the game and uses those mods as the list to determine mod conflicts and what mod content to package. By default, the patcher will only generate a mod that contains the files which conflicted and an accompanying .mod description file that lists its dependencies to ensure load order. 
 
