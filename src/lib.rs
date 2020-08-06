@@ -1,4 +1,5 @@
 mod moddata;
+mod text_encoding;
 mod merge_diff;
 pub use moddata::{mod_info::ModInfo,mod_pack::ModPack};
 
@@ -6,8 +7,6 @@ use std::path::{PathBuf,Path};
 use std::fs::{self,File};
 use std::io::{prelude::*,BufReader};
 use std::collections::HashMap;
-
-use clap::{Arg,App};
 
 use serde::Deserialize;
 
@@ -17,9 +16,6 @@ use zip::read::ZipArchive;
 use zip::write::ZipWriter;
 
 use merge_diff::diff_single_conflict;
-
-use encoding_rs::WINDOWS_1252;
-use encoding_rs_io::DecodeReaderBytesBuilder;
 
 pub struct ArgOptions {
     pub config_path: PathBuf,
@@ -31,6 +27,9 @@ pub struct ArgOptions {
 }
 
 impl ArgOptions {
+    pub fn new(config_path: PathBuf, extract: bool, dry_run: bool, verbose: bool, game_id: String, patch_name: String) -> Self {
+        ArgOptions {config_path,extract,dry_run,verbose,game_id,patch_name}
+    }
     pub fn folder_name(&self) -> String {
         let mut mod_folder = self.patch_name.clone();
         mod_folder.make_ascii_lowercase();
@@ -58,53 +57,6 @@ impl From<(String,ConfigListItem)> for ConfigOptions {
         let valid_paths: Vec<PathBuf> = from_tuple.1.valid_paths.iter().map(|x| PathBuf::from(&x)).collect();
         ConfigOptions {game_name: from_tuple.0, mod_path: PathBuf::from(from_tuple.1.modpath), data_path: PathBuf::from(from_tuple.1.datapath), valid_paths}
     }
-}
-
-
-    
-pub fn parse_args() -> ArgOptions {
-        let args = App::new("Parker's Paradox Patcher")
-        .version("0.2")
-        .about("Merges some mods together automatically sometimes.")
-        .author("Parker Okonek")
-        .arg(Arg::with_name("config")
-        .short("c")
-        .long("config")
-        .value_name("CONFIG_FILE")
-        .help("configuration file to load, defaults to current directory")
-        .takes_value(true))
-        .arg(Arg::with_name("extract")
-        .short("x")
-        .long("extract")
-        .help("extract all non-conflicting files to a folder"))
-        .arg(Arg::with_name("dry-run")
-        .short("d")
-        .long("dry-run")
-        .help("list file conflicts without merging"))
-        .arg(Arg::with_name("verbose")
-        .short("v")
-        .long("verbose")
-        .help("print information about processed mods"))
-        .arg(Arg::with_name("game_id")
-        .required(false)
-        .index(2)
-        .help("game in the config to use"))
-        .arg(Arg::with_name("patch_name")
-        .index(1)
-        .required(true)
-        .help("name of the generated mod"))
-        .get_matches();
-        
-        
-        let mut config_path = PathBuf::new();
-        config_path.push(args.value_of("config").unwrap_or("./merger.toml"));
-        let extract = args.is_present("extract");
-        let dry_run = args.is_present("dry-run");
-        let verbose = args.is_present("verbose");
-        let game_id = String::from(args.value_of("game_id").unwrap_or(""));
-        let patch_name: String = String::from(args.value_of("patch_name").unwrap_or("merged_patch"));
-        
-        ArgOptions{config_path,extract,dry_run,verbose,game_id,patch_name}
 }
     
 pub fn parse_configs(arguments: &ArgOptions) -> Result<ConfigOptions,std::io::Error> {
@@ -506,16 +458,16 @@ fn mod_zip_fetch(dir: &Path, mod_entry: &ModInfo) -> Option<String> {
             if content.is_dir() {
                 return None;
             }
-            let mut output = String::new();
+            let mut output = Vec::new();
             for byte in content.bytes() {
                 if let Ok(c) = byte {
-                    output.push(c as char);
+                    output.push(c);
                 } else if let Err(e) = byte {
                     eprintln!("{}",e);
                     return None;
                 }
             }
-            Some(output)
+            text_encoding::read_utf8_or_latin1(output)
         } else {
             None
         }
