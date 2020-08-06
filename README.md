@@ -40,7 +40,7 @@ ARGS:
 An example merging mod conflicts for CK2 using the supplied config file.
 ```bash
 cd PATH/TO/MERGER
-paradoxmerger CK2 "Merged Patch"
+paradoxmerger "Merged Patch" CK2
 ```
 ## Appendix
 [Diff Match Patch](https://github.com/google/diff-match-patch): library used for diffing mod files and patching them together
