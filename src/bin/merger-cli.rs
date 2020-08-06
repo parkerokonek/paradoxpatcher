@@ -1,6 +1,8 @@
-use paradoxmerger::{parse_args,parse_configs,ModInfo,ModPack,generate_mod_list,files_in_vanilla,extract_all_files,auto_merge,write_mod_desc_to_folder};
+use paradoxmerger::{parse_configs,ModInfo,ModPack,generate_mod_list,files_in_vanilla,extract_all_files,auto_merge,write_mod_desc_to_folder,ArgOptions};
 
-use std::path::Path;
+use std::path::{PathBuf,Path};
+use clap::{Arg,App};
+
 
 fn main() {
     let args = parse_args();
@@ -40,4 +42,49 @@ fn main() {
         Err(e) => {eprintln!("{}",e);}
     }
         
+}
+
+pub fn parse_args() -> ArgOptions {
+    let args = App::new("Parker's Paradox Patcher")
+    .version("0.2")
+    .about("Merges some mods together automatically sometimes.")
+    .author("Parker Okonek")
+    .arg(Arg::with_name("config")
+    .short("c")
+    .long("config")
+    .value_name("CONFIG_FILE")
+    .help("configuration file to load, defaults to current directory")
+    .takes_value(true))
+    .arg(Arg::with_name("extract")
+    .short("x")
+    .long("extract")
+    .help("extract all non-conflicting files to a folder"))
+    .arg(Arg::with_name("dry-run")
+    .short("d")
+    .long("dry-run")
+    .help("list file conflicts without merging"))
+    .arg(Arg::with_name("verbose")
+    .short("v")
+    .long("verbose")
+    .help("print information about processed mods"))
+    .arg(Arg::with_name("game_id")
+    .required(false)
+    .index(2)
+    .help("game in the config to use"))
+    .arg(Arg::with_name("patch_name")
+    .index(1)
+    .required(true)
+    .help("name of the generated mod"))
+    .get_matches();
+    
+    
+    let mut config_path = PathBuf::new();
+    config_path.push(args.value_of("config").unwrap_or("./merger.toml"));
+    let extract = args.is_present("extract");
+    let dry_run = args.is_present("dry-run");
+    let verbose = args.is_present("verbose");
+    let game_id = String::from(args.value_of("game_id").unwrap_or(""));
+    let patch_name: String = String::from(args.value_of("patch_name").unwrap_or("merged_patch"));
+    
+    ArgOptions::new(config_path,extract,dry_run,verbose,game_id,patch_name)
 }

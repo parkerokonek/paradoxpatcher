@@ -1,4 +1,5 @@
 mod moddata;
+mod text_encoding;
 mod merge_diff;
 pub use moddata::{mod_info::ModInfo,mod_pack::ModPack};
 
@@ -6,8 +7,6 @@ use std::path::{PathBuf,Path};
 use std::fs::{self,File};
 use std::io::{prelude::*,BufReader};
 use std::collections::HashMap;
-
-use clap::{Arg,App};
 
 use serde::Deserialize;
 
@@ -17,9 +16,6 @@ use zip::read::ZipArchive;
 use zip::write::ZipWriter;
 
 use merge_diff::diff_single_conflict;
-
-use encoding_rs::WINDOWS_1252;
-use encoding_rs_io::DecodeReaderBytesBuilder;
 
 pub struct ArgOptions {
     pub config_path: PathBuf,
@@ -31,6 +27,9 @@ pub struct ArgOptions {
 }
 
 impl ArgOptions {
+    pub fn new(config_path: PathBuf, extract: bool, dry_run: bool, verbose: bool, game_id: String, patch_name: String) -> Self {
+        ArgOptions {config_path,extract,dry_run,verbose,game_id,patch_name}
+    }
     pub fn folder_name(&self) -> String {
         let mut mod_folder = self.patch_name.clone();
         mod_folder.make_ascii_lowercase();
@@ -58,53 +57,6 @@ impl From<(String,ConfigListItem)> for ConfigOptions {
         let valid_paths: Vec<PathBuf> = from_tuple.1.valid_paths.iter().map(|x| PathBuf::from(&x)).collect();
         ConfigOptions {game_name: from_tuple.0, mod_path: PathBuf::from(from_tuple.1.modpath), data_path: PathBuf::from(from_tuple.1.datapath), valid_paths}
     }
-}
-
-
-    
-pub fn parse_args() -> ArgOptions {
-        let args = App::new("Parker's Paradox Patcher")
-        .version("0.2")
-        .about("Merges some mods together automatically sometimes.")
-        .author("Parker Okonek")
-        .arg(Arg::with_name("config")
-        .short("c")
-        .long("config")
-        .value_name("CONFIG_FILE")
-        .help("configuration file to load, defaults to current directory")
-        .takes_value(true))
-        .arg(Arg::with_name("extract")
-        .short("x")
-        .long("extract")
-        .help("extract all non-conflicting files to a folder"))
-        .arg(Arg::with_name("dry-run")
-        .short("d")
-        .long("dry-run")
-        .help("list file conflicts without merging"))
-        .arg(Arg::with_name("verbose")
-        .short("v")
-        .long("verbose")
-        .help("print information about processed mods"))
-        .arg(Arg::with_name("game_id")
-        .required(false)
-        .index(2)
-        .help("game in the config to use"))
-        .arg(Arg::with_name("patch_name")
-        .index(1)
-        .required(true)
-        .help("name of the generated mod"))
-        .get_matches();
-        
-        
-        let mut config_path = PathBuf::new();
-        config_path.push(args.value_of("config").unwrap_or("./merger.toml"));
-        let extract = args.is_present("extract");
-        let dry_run = args.is_present("dry-run");
-        let verbose = args.is_present("verbose");
-        let game_id = String::from(args.value_of("game_id").unwrap_or(""));
-        let patch_name: String = String::from(args.value_of("patch_name").unwrap_or("merged_patch"));
-        
-        ArgOptions{config_path,extract,dry_run,verbose,game_id,patch_name}
 }
     
 pub fn parse_configs(arguments: &ArgOptions) -> Result<ConfigOptions,std::io::Error> {
@@ -144,16 +96,16 @@ pub fn parse_configs(arguments: &ArgOptions) -> Result<ConfigOptions,std::io::Er
 fn file_to_string(file_path: &Path) -> Option<String> {
         let file = File::open(file_path);
         if let Ok(file_open) = file {
-            let mut contents = String::new();
+            let mut contents = Vec::new();
             for byte in file_open.bytes() {
                 if let Ok(c) = byte {
-                    contents.push(c as char);
+                    contents.push(c);
                 } else if let Err(e) = byte {
                     eprintln!("{}",e);
                     return None;
                 }
             }
-            return Some(contents);
+            return text_encoding::read_utf8_or_latin1(contents);
         } else if let Err(e) = file {
             eprintln!("{}",e);
         }
@@ -367,7 +319,6 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                 eprintln!("Error opening vanilla file for comparison: {}",conf.path().display());
                 return Err(());
             }
-            // Requisite setup for python
 
             for (idx,mod_info) in conf.list_mods().iter().enumerate() {
                 if let Some(current) = mod_pack.get_mod(&mod_info) {
@@ -392,7 +343,7 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                 }
             }
 
-            let mut file_content = diff_single_conflict(&vanilla_file, &file_contents, false);
+            let file_content = diff_single_conflict(&vanilla_file, &file_contents, false);
 
             if file_content.is_none() {
                 eprintln!("This file will need manual merging: {}",conf.path().display());
@@ -400,20 +351,32 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                 //Process vanilla file
                 let mod_folder = args.folder_name() + "_bad";
                 let cur_folder: PathBuf = [&mod_folder,"vanilla"].iter().collect();
-                let _try_write = write_to_mod_folder(&cur_folder, vanilla_file.as_bytes(), conf.path());
+                let vanilla_content = match text_encoding::encode_latin1(vanilla_file.clone()) {
+                    Some(s) => s,
+                    None => vanilla_file.as_bytes().to_vec(),
+                };
+                let _try_write = write_to_mod_folder(&cur_folder, &vanilla_content, conf.path());
 
                 //Process the rest of the files
                 for (file_index,file_content) in file_indices.iter().zip(file_contents) {
                     let cur_mod = &conf.list_mods()[*file_index];
                     let cur_mod = mod_pack.get_mod(cur_mod).unwrap();
                     let cur_folder: PathBuf = [&mod_folder,cur_mod.get_name()].iter().collect();
-                    let _try_write = write_to_mod_folder(&cur_folder, file_content.as_bytes(), conf.path());
+                    let real_content = match text_encoding::encode_latin1(file_content.clone()) {
+                        Some(s) => s,
+                        None => file_content.as_bytes().to_vec(),
+                    };
+                    let _try_write = write_to_mod_folder(&cur_folder, &real_content, conf.path());
                 }
             } else if let Some(content) = &file_content {
                 //println!("{}",content);
                 let mod_folder = args.folder_name();
                 let mod_folder: &Path = Path::new(&mod_folder);
-                let try_write = write_to_mod_folder(mod_folder, content.as_bytes(), conf.path());
+                let real_content = match text_encoding::encode_latin1(content.clone()) {
+                    Some(s) => s,
+                    None => content.as_bytes().to_vec(),
+                };
+                let try_write = write_to_mod_folder(mod_folder, &real_content, conf.path());
                 if try_write.is_ok() {
                     successful+=1;
                 } else {
@@ -424,14 +387,22 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                 //Process vanilla file
                 let mod_folder = args.folder_name() + "_bad";
                 let cur_folder: PathBuf = [&mod_folder,"vanilla"].iter().collect();
-                let _try_write = write_to_mod_folder(&cur_folder, vanilla_file.as_bytes(), conf.path());
+                let vanilla_content = match text_encoding::encode_latin1(vanilla_file.clone()) {
+                    Some(s) => s,
+                    None => vanilla_file.as_bytes().to_vec(),
+                };
+                let _try_write = write_to_mod_folder(&cur_folder, &vanilla_content, conf.path());
 
                 //Process the rest of the files
                 for (file_index,file_content) in file_indices.iter().zip(file_contents) {
                     let cur_mod = &conf.list_mods()[*file_index];
                     let cur_mod = mod_pack.get_mod(cur_mod).unwrap();
                     let cur_folder: PathBuf = [&mod_folder,cur_mod.get_name()].iter().collect();
-                    let _try_write = write_to_mod_folder(&cur_folder, file_content.as_bytes(), conf.path());
+                    let real_content = match text_encoding::encode_latin1(file_content.clone()) {
+                        Some(s) => s,
+                        None => file_content.as_bytes().to_vec(),
+                    };
+                    let _try_write = write_to_mod_folder(&cur_folder, &real_content, conf.path());
 
                 } 
             }
@@ -506,16 +477,16 @@ fn mod_zip_fetch(dir: &Path, mod_entry: &ModInfo) -> Option<String> {
             if content.is_dir() {
                 return None;
             }
-            let mut output = String::new();
+            let mut output = Vec::new();
             for byte in content.bytes() {
                 if let Ok(c) = byte {
-                    output.push(c as char);
+                    output.push(c);
                 } else if let Err(e) = byte {
                     eprintln!("{}",e);
                     return None;
                 }
             }
-            Some(output)
+            text_encoding::read_utf8_or_latin1(output)
         } else {
             None
         }
