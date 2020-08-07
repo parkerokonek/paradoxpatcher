@@ -7,6 +7,7 @@ use std::path::{PathBuf,Path};
 use std::fs::{self,File};
 use std::io::{prelude::*,BufReader};
 use std::collections::HashMap;
+use std::error::Error;
 
 use serde::Deserialize;
 
@@ -134,19 +135,25 @@ fn grep(input: &str, re: &Regex, all_matches: bool) -> Vec<String> {
 }
     
 fn collect_dependencies(mod_path: &Path) -> Vec<String> {
-        let re_dep = Regex::new(r#"(?m)dependencies[^}]+"#).unwrap();
-        let re_sing = Regex::new(r#""[^"]+""#).unwrap();
-        let results = fgrep(mod_path,&re_dep,false);
+        let re_dep = Regex::new(r#"(?m)dependencies[^}]+"#);
+        let re_sing = Regex::new(r#""[^"]+""#);
+        let results = match re_dep {
+            Ok(r) => fgrep(mod_path,&r,false),
+            Err(e) => {eprintln!("{}",e); return Vec::new()},
+        };
         
         if !results.is_empty() {
             let dependencies = results[0].replace(r#"\""#, "").replace("\r","");
-            let single_deps = grep(&dependencies,&re_sing,true);
+            let single_deps = match re_sing {
+                Ok(r) => grep(&dependencies,&r,true),
+                Err(e) => {eprintln!("{}",e); return Vec::new()},
+            };
             let single_deps: Vec<String> = single_deps.iter().map(|x| trim_quotes(x)).collect();
             
-            return single_deps;
+            single_deps
+        } else {
+            Vec::new()
         }
-        
-        Vec::new()
 }
     
 fn trim_quotes(input: &str) -> String {
@@ -161,17 +168,20 @@ fn find_even_with_case(path: &Path) -> Option<PathBuf> {
         if let Ok(_file) = File::open(path) {
             return Some(PathBuf::from(&path));
         } else if path.has_root() {
-            if let Ok(dir) = std::fs::read_dir(path.parent().unwrap()) {
+            if let Ok(dir) = std::fs::read_dir(path.parent()?) {
                 for entry in dir {
-                    if entry.is_ok() {
-                        let entry_path = entry.unwrap().path();
-                        let mut lowerpath: String = entry_path.to_str().unwrap().to_string();
-                        lowerpath.make_ascii_lowercase();
-                        let mut lowercompare: String = String::from(path.to_str().unwrap());
-                        lowercompare.make_ascii_lowercase();
-                        if lowercompare == lowerpath {
-                            return Some(entry_path);
-                        }
+                    let entry_path = match entry {
+                        Ok(p) => p.path(),
+                        Err(_e) => continue,
+                    };
+                    let mut lowerpath: String = String::from(entry_path.to_str()?);
+                    let mut lowercompare: String = String::from(path.to_str()?);
+
+                    lowerpath.make_ascii_lowercase();
+                    lowercompare.make_ascii_lowercase();
+                    
+                    if lowercompare == lowerpath {
+                        return Some(entry_path);
                     }
                 }
             }
@@ -204,9 +214,15 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
         } else if name.len() == 1 && archive.len() == 1 {
             let zip_path: PathBuf = [mod_path.to_str()?,&archive[0]].iter().collect();
             let zip_path = find_even_with_case(&zip_path)?;
-            let file = File::open(&zip_path).unwrap();
+            let file = match File::open(&zip_path) {
+                Ok(f) => f,
+                Err(e) => {eprintln!("{}",e); return None},
+            };
             let reader = BufReader::new(file);
-            let zipfile = ZipArchive::new(reader).unwrap();
+            let zipfile = match ZipArchive::new(reader) {
+                Ok(z) => z,
+                Err(e) => {eprintln!("{}",e); return None},
+            };
             
             let files: Vec<&str> = zipfile.file_names().collect();
             
@@ -272,7 +288,11 @@ fn walk_in_dir(dir: &Path, relative: Option<&Path>) -> Vec<PathBuf> {
                 break 'walk;
             }
             for directory in &to_do {
-                for entry in fs::read_dir(directory).unwrap() {
+                let read_directory = match fs::read_dir(directory) {
+                    Ok(dir) => dir,
+                    Err(_e) => continue,
+                };
+                for entry in read_directory {
                     if let Ok(new_entry) = entry {
                         if new_entry.path().is_dir() {
                             found_dirs.push(new_entry.path());
@@ -360,7 +380,10 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                 //Process the rest of the files
                 for (file_index,file_content) in file_indices.iter().zip(file_contents) {
                     let cur_mod = &conf.list_mods()[*file_index];
-                    let cur_mod = mod_pack.get_mod(cur_mod).unwrap();
+                    let cur_mod = match mod_pack.get_mod(cur_mod) {
+                        Some(m) => m,
+                        None => return Err(()),
+                    };
                     let cur_folder: PathBuf = [&mod_folder,cur_mod.get_name()].iter().collect();
                     let real_content = match text_encoding::encode_latin1(file_content.clone()) {
                         Some(s) => s,
@@ -376,12 +399,11 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                     Some(s) => s,
                     None => content.as_bytes().to_vec(),
                 };
-                let try_write = write_to_mod_folder(mod_folder, &real_content, conf.path());
-                if try_write.is_ok() {
-                    successful+=1;
-                } else {
-                    eprintln!("{}",try_write.err().unwrap());
-                }
+
+                match write_to_mod_folder(mod_folder, &real_content, conf.path()) {
+                    Ok(_) => successful+=1,
+                    Err(e) => eprintln!("{}",e),
+                };
                 continue;
             } else {
                 //Process vanilla file
@@ -396,7 +418,10 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                 //Process the rest of the files
                 for (file_index,file_content) in file_indices.iter().zip(file_contents) {
                     let cur_mod = &conf.list_mods()[*file_index];
-                    let cur_mod = mod_pack.get_mod(cur_mod).unwrap();
+                    let cur_mod = match mod_pack.get_mod(cur_mod) {
+                        Some(m) => m,
+                        None => return Err(()),
+                    };
                     let cur_folder: PathBuf = [&mod_folder,cur_mod.get_name()].iter().collect();
                     let real_content = match text_encoding::encode_latin1(file_content.clone()) {
                         Some(s) => s,
@@ -435,7 +460,7 @@ fn write_to_mod_folder(mod_folder: &Path, contents: &[u8], path: &Path) -> Resul
 
 fn write_to_mod_zip(mod_folder: &Path, contents: &[u8], path: &Path, zip: &Path) -> Result<(),std::io::Error> {
     let zip_path = relative_folder_path(mod_folder, zip)?;
-    let file = File::open(&zip_path).unwrap();
+    let file = File::open(&zip_path)?;
     let mut writer = ZipWriter::new(file);
     let options = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
     //zip
@@ -445,19 +470,27 @@ fn write_to_mod_zip(mod_folder: &Path, contents: &[u8], path: &Path, zip: &Path)
 pub fn write_mod_desc_to_folder(args: &ArgOptions, mod_pack: &ModPack) -> Result<(),std::io::Error> {
     let mut mod_file_name = PathBuf::from(args.folder_name());
     mod_file_name.set_extension("mod");
-    let full_path = if args.dry_run || mod_pack.list_conflicts().is_empty() {current_dir_path(args, &mod_file_name)?} else {relative_folder_path(Path::new(&args.folder_name()), &mod_file_name)?};
 
-    let mut file_contents = format!("name = \"{}\"\narchive = \"mod/{}.zip\"\n",args.patch_name,args.folder_name());
+    let full_path = if args.dry_run || mod_pack.list_conflicts().is_empty() {
+        current_dir_path(args, &mod_file_name)?
+    } else {
+        relative_folder_path(Path::new(&args.folder_name()), &mod_file_name)?
+    };
 
+    let mut file_contents = format!("name = \"{}\"\narchive = \"mod/{}.zip\"\n", args.patch_name, args.folder_name());
 
-    
     file_contents.push_str("dependencies = {\n");
     for dep in mod_pack.load_order() {
         let dep_text = format!("\"\\\"{}\\\"\"\n",dep);
         file_contents.push_str(&dep_text);
     }
     file_contents.push_str("}\n");
-    let _result = fs::create_dir_all(full_path.parent().unwrap());
+
+    let trimmed_path = match full_path.parent() {
+        Some(p) => p,
+        None => &full_path,
+    };
+    let _result = fs::create_dir_all(trimmed_path);
     fs::write(full_path,file_contents)?;
     Ok(())
 }
@@ -468,9 +501,15 @@ fn mod_zip_fetch(dir: &Path, mod_entry: &ModInfo) -> Option<String> {
         }
         let zip_archive = mod_entry.get_data_path();
         let zip_path = find_even_with_case(&zip_archive)?;
-        let file = File::open(&zip_path).unwrap();
+        let file = match File::open(&zip_path) {
+            Ok(f) => f,
+            Err(e) => {eprintln!("{}",e); return None},
+        };
         let mut reader = BufReader::new(file);
-        let mut zip_file = ZipArchive::new(reader).unwrap();
+        let mut zip_file = match ZipArchive::new(reader) {
+            Ok(r) => r,
+            Err(e) => {eprintln!("{}",e); return None},
+        };
         let zip_content = zip_file.by_name(&dir.to_str()?);
         
         if let Ok(content) = zip_content {
@@ -500,9 +539,15 @@ fn mod_zip_fetch_all(mod_entry: &ModInfo) -> HashMap<String,Vec<u8>> {
     let zip_archive = mod_entry.get_data_path();
     let zip_path = find_even_with_case(&zip_archive);
     if let Some(good_path) = zip_path {
-        let file = File::open(good_path).unwrap();
+        let file = match File::open(good_path) {
+            Ok(p) => p,
+            Err(e) => {eprintln!("{}",e); return results},
+        };
         let reader = BufReader::new(file);
-        let mut zip_file = ZipArchive::new(reader).unwrap();
+        let mut zip_file = match ZipArchive::new(reader) {
+            Ok(z) => z,
+            Err(e) => {eprintln!("{}",e); return results},
+        };
         let names: Vec<String> = zip_file.file_names().map(|x| x.to_owned()).collect();
         for full_path in names {
             let zip_result = zip_file.by_name(&full_path);
