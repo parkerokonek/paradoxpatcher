@@ -226,7 +226,7 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
 pub fn generate_mod_list(path: &Path) -> Vec<ModInfo> {
         let mod_reg = Regex::new("\"mod/[^\"]*\"").unwrap();
         let mut settings = path.to_path_buf();
-        settings.push("./settings.txt");
+        settings.push("settings.txt");
         let enabled_mods = fgrep(&settings,&mod_reg,true);
         if enabled_mods.is_empty() {
             eprintln!("Had an issue reading the settings file.");

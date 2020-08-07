@@ -225,13 +225,4 @@ mod test {
 
         assert_eq!(diff_single_conflict(source, &[change_line,remove_line], false),None,"If one file tries to remove a line and another wants to change it, these are not compatible changes");
     }
-
-    //#[test]
-    fn test_real_files() {
-        let source = include_str!("test/vanilla_religions.txt");
-        let slavic = include_str!("test/slavic_religions.txt").to_owned();
-        let immersive = include_str!("test/immersive_religions.txt").to_owned();
-        
-        assert_ne!(diff_single_conflict(source, &[slavic,immersive], true),None,"These files do not have any unreconcilable conflicts.");
-    }
 }
