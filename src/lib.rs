@@ -7,7 +7,6 @@ use std::path::{PathBuf,Path};
 use std::fs::{self,File};
 use std::io::{prelude::*,BufReader};
 use std::collections::HashMap;
-use std::error::Error;
 
 use serde::Deserialize;
 use lazy_static::lazy_static;
@@ -364,7 +363,21 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
 
             let file_content = diff_single_conflict(&vanilla_file, &file_contents, false);
 
-            if file_content.is_none() {
+            if let Some(content) = &file_content {
+                //println!("{}",content);
+                let mod_folder = args.folder_name();
+                let mod_folder: &Path = Path::new(&mod_folder);
+                let real_content = match text_encoding::encode_latin1(content.clone()) {
+                    Some(s) => s,
+                    None => content.as_bytes().to_vec(),
+                };
+
+                match write_to_mod_folder(mod_folder, &real_content, conf.path()) {
+                    Ok(_) => successful+=1,
+                    Err(e) => eprintln!("{}",e),
+                };
+                continue;
+            } else {
                 eprintln!("This file will need manual merging: {}",conf.path().display());
 
                 //Process vanilla file
@@ -390,47 +403,9 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                     };
                     let _try_write = write_to_mod_folder(&cur_folder, &real_content, conf.path());
                 }
-            } else if let Some(content) = &file_content {
-                //println!("{}",content);
-                let mod_folder = args.folder_name();
-                let mod_folder: &Path = Path::new(&mod_folder);
-                let real_content = match text_encoding::encode_latin1(content.clone()) {
-                    Some(s) => s,
-                    None => content.as_bytes().to_vec(),
-                };
-
-                match write_to_mod_folder(mod_folder, &real_content, conf.path()) {
-                    Ok(_) => successful+=1,
-                    Err(e) => eprintln!("{}",e),
-                };
-                continue;
-            } else {
-                //Process vanilla file
-                let mod_folder = args.folder_name() + "_bad";
-                let cur_folder: PathBuf = [&mod_folder,"vanilla"].iter().collect();
-                let vanilla_content = match text_encoding::encode_latin1(vanilla_file.clone()) {
-                    Some(s) => s,
-                    None => vanilla_file.as_bytes().to_vec(),
-                };
-                let _try_write = write_to_mod_folder(&cur_folder, &vanilla_content, conf.path());
-
-                //Process the rest of the files
-                for (file_index,file_content) in file_indices.iter().zip(file_contents) {
-                    let cur_mod = &conf.list_mods()[*file_index];
-                    let cur_mod = match mod_pack.get_mod(cur_mod) {
-                        Some(m) => m,
-                        None => return Err(()),
-                    };
-                    let cur_folder: PathBuf = [&mod_folder,cur_mod.get_name()].iter().collect();
-                    let real_content = match text_encoding::encode_latin1(file_content.clone()) {
-                        Some(s) => s,
-                        None => file_content.as_bytes().to_vec(),
-                    };
-                    let _try_write = write_to_mod_folder(&cur_folder, &real_content, conf.path());
-
-                } 
             }
         }
+        
         Ok(successful)
 }
 
