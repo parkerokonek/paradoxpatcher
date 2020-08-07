@@ -13,7 +13,7 @@ Using the extract flag is recommended, as it ensures that every person using the
 The current state of the project is experimental at best.
 Install cargo and clone the repository, then cd to the folder and run:
 ```
-cargo build --release
+cargo build --release --features command-line --bin merger-cli
 ```
 Requires rust's cargo/rustup to compile.
 
