@@ -46,7 +46,7 @@ fn main() {
 
 pub fn parse_args() -> ArgOptions {
     let args = App::new("Parker's Paradox Patcher")
-    .version("0.2")
+    .version("0.3")
     .about("Merges some mods together automatically sometimes.")
     .author("Parker Okonek")
     .arg(Arg::with_name("config")
