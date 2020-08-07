@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use serde::Deserialize;
-
+use lazy_static::lazy_static;
 use regex::Regex;
 
 use zip::read::ZipArchive;
@@ -58,6 +58,17 @@ impl From<(String,ConfigListItem)> for ConfigOptions {
         let valid_paths: Vec<PathBuf> = from_tuple.1.valid_paths.iter().map(|x| PathBuf::from(&x)).collect();
         ConfigOptions {game_name: from_tuple.0, mod_path: PathBuf::from(from_tuple.1.modpath), data_path: PathBuf::from(from_tuple.1.datapath), valid_paths}
     }
+}
+
+lazy_static! {
+    // Evaluate all of our regular expressions just once for efficiency and things only dying the first time
+    static ref RE_DEPS: Regex    = Regex::new(r#"(?m)dependencies[^}]+"#).unwrap();
+    static ref RE_SING: Regex    = Regex::new(r#""[^"]+""#).unwrap();
+    static ref RE_ARCHIVE: Regex = Regex::new(r#"archive\s*=\s*"[^"]*\.zip""#).unwrap();
+    static ref RE_PATHS: Regex   = Regex::new(r#"path\s*=\s*"[^"]*""#).unwrap();
+    static ref RE_NAMES: Regex   = Regex::new(r#"name\s*=\s*"[^"]*""#).unwrap();
+    static ref RE_REPLACE: Regex = Regex::new(r#"replace_path\s*=\s*"[^"]*""#).unwrap();
+    static ref RE_MOD: Regex     = Regex::new("\"mod/[^\"]*\"").unwrap();
 }
     
 pub fn parse_configs(arguments: &ArgOptions) -> Result<ConfigOptions,std::io::Error> {
@@ -135,19 +146,11 @@ fn grep(input: &str, re: &Regex, all_matches: bool) -> Vec<String> {
 }
     
 fn collect_dependencies(mod_path: &Path) -> Vec<String> {
-        let re_dep = Regex::new(r#"(?m)dependencies[^}]+"#);
-        let re_sing = Regex::new(r#""[^"]+""#);
-        let results = match re_dep {
-            Ok(r) => fgrep(mod_path,&r,false),
-            Err(e) => {eprintln!("{}",e); return Vec::new()},
-        };
+        let results = fgrep(mod_path,&RE_DEPS,false);
         
         if !results.is_empty() {
             let dependencies = results[0].replace(r#"\""#, "").replace("\r","");
-            let single_deps = match re_sing {
-                Ok(r) => grep(&dependencies,&r,true),
-                Err(e) => {eprintln!("{}",e); return Vec::new()},
-            };
+            let single_deps = grep(&dependencies,&RE_SING,true);
             let single_deps: Vec<String> = single_deps.iter().map(|x| trim_quotes(x)).collect();
             
             single_deps
@@ -191,19 +194,15 @@ fn find_even_with_case(path: &Path) -> Option<PathBuf> {
 }
     
 fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
-        let re_archive = Regex::new(r#"archive\s*=\s*"[^"]*\.zip""#).unwrap();
-        let re_paths = Regex::new(r#"path\s*=\s*"[^"]*""#).unwrap();
-        let re_names = Regex::new(r#"name\s*=\s*"[^"]*""#).unwrap();
-        let re_replace = Regex::new(r#"replace_path\s*=\s*"[^"]*""#).unwrap();
         let modmod_path: PathBuf = [mod_path,mod_file].iter().collect();
         let dependencies = collect_dependencies(&modmod_path);
         
         let modmod_content = file_to_string(&modmod_path).unwrap_or_default();
         
-        let archive: Vec<String> = grep(&modmod_content, &re_archive, false).iter().map(|x| trim_quotes(x) ).collect();
-        let path: Vec<String> = grep(&modmod_content, &re_paths, false).iter().map(|x| trim_quotes(x)).collect();
-        let name: Vec<String> = grep(&modmod_content, &re_names, false).iter().map(|x| trim_quotes(x)).collect();
-        let replace_paths: Vec<PathBuf> = grep(&modmod_content, &re_replace, true).iter().map(|x| PathBuf::from(trim_quotes(x))).collect();
+        let archive: Vec<String> = grep(&modmod_content, &RE_ARCHIVE, false).iter().map(|x| trim_quotes(x) ).collect();
+        let path: Vec<String> = grep(&modmod_content, &RE_PATHS, false).iter().map(|x| trim_quotes(x)).collect();
+        let name: Vec<String> = grep(&modmod_content, &RE_NAMES, false).iter().map(|x| trim_quotes(x)).collect();
+        let replace_paths: Vec<PathBuf> = grep(&modmod_content, &RE_REPLACE, true).iter().map(|x| PathBuf::from(trim_quotes(x))).collect();
         
         let path: Vec<String> = path.into_iter().filter(|x| !&replace_paths.contains(&PathBuf::from(&x))).collect();
         
@@ -607,6 +606,5 @@ pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, config: &ConfigOptio
 }
 
 fn normalize_line_endings(data: String) -> String {
-    let tmp = data.replace("\r\n", "\n");
-    tmp.replace("\n", "\r\n")
+    data.replace("\r\n", "\n").replace("\n", "\r\n")
 }
