@@ -329,14 +329,14 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
             }
             let mut file_contents: Vec<String> = Vec::new();
             let mut file_indices: Vec<usize> = Vec::new();
-            let mut vanilla_file = String::new();
-            let try_fetch = vanilla_fetch(conf.path(),config);
-            if let Some(contents) = try_fetch {
-                vanilla_file = normalize_line_endings(contents);
-            } else {
-                eprintln!("Error opening vanilla file for comparison: {}",conf.path().display());
-                return Err(());
-            }
+
+            let vanilla_file = match vanilla_fetch(conf.path(),config) {
+                Some(contents) => normalize_line_endings(contents),
+                None => {
+                    eprintln!("Error opening vanilla file for comparison: {}",conf.path().display());
+                    return Err(());
+                },
+            };
 
             for (idx,mod_info) in conf.list_mods().iter().enumerate() {
                 if let Some(current) = mod_pack.get_mod(&mod_info) {
@@ -364,7 +364,6 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
             let file_content = diff_single_conflict(&vanilla_file, &file_contents, false);
 
             if let Some(content) = &file_content {
-                //println!("{}",content);
                 let mod_folder = args.folder_name();
                 let mod_folder: &Path = Path::new(&mod_folder);
                 let real_content = match text_encoding::encode_latin1(content.clone()) {
@@ -416,7 +415,7 @@ fn relative_folder_path(mod_folder: &Path, path: &Path) -> Result<PathBuf,std::i
     Ok(full_path)
 }
 
-fn current_dir_path(args: &ArgOptions, path: &Path) -> Result<PathBuf,std::io::Error> {
+fn current_dir_path(_args: &ArgOptions, path: &Path) -> Result<PathBuf,std::io::Error> {
     let current_dir = std::env::current_dir()?;
     let full_path: PathBuf = [&current_dir,path].iter().collect();
     Ok(full_path)
@@ -432,12 +431,18 @@ fn write_to_mod_folder(mod_folder: &Path, contents: &[u8], path: &Path) -> Resul
     Ok(())
 }
 
-fn write_to_mod_zip(mod_folder: &Path, contents: &[u8], path: &Path, zip: &Path) -> Result<(),std::io::Error> {
+fn write_to_mod_zip(mod_folder: &Path, staged_data: HashMap<String,Vec<u8>>, zip: &Path) -> Result<(),std::io::Error> {
     let zip_path = relative_folder_path(mod_folder, zip)?;
     let file = File::open(&zip_path)?;
     let mut writer = ZipWriter::new(file);
     let options = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
-    //zip
+
+    for (file_path,file_data) in staged_data {
+        writer.start_file_from_path(Path::new(&file_path), options)?;
+        writer.write_all(&file_data)?;
+    }
+
+    writer.finish()?;
     Ok(())
 }
 
@@ -504,7 +509,40 @@ fn mod_zip_fetch(dir: &Path, mod_entry: &ModInfo) -> Option<String> {
             None
         }
 }
- 
+
+fn mod_path_fetch_all(mod_entry: &ModInfo) -> HashMap<String,Vec<u8>> {
+    let mut results = HashMap::new();
+    if mod_entry.is_zip() {
+        return results;
+    }
+
+    let mod_path = mod_entry.get_data_path();
+    let mod_path = find_even_with_case(&mod_path);
+
+    if let Some(good_path) = mod_path {
+        let all_files_rel = walk_in_dir(&good_path, Some(&good_path));
+        let all_files_abs = walk_in_dir(&good_path, None);
+
+        for (rel_path,file_path) in all_files_rel.iter().zip(all_files_abs) {
+            let file = File::open(file_path);
+            let real_path: String = match rel_path.to_str() {
+                Some(s) => s.to_owned(),
+                None => {eprintln!("Could not read file path for {}",rel_path.display()); continue},
+            };
+            if let Ok(mut file_open) = file {
+                let mut contents = Vec::new();
+                match file_open.read_to_end(&mut contents) {
+                    Ok(_) => {results.insert(real_path, contents);},
+                    Err(e) => eprintln!("{}",e),
+                };
+
+            }
+        }
+    }
+
+    results
+}
+
 fn mod_zip_fetch_all(mod_entry: &ModInfo) -> HashMap<String,Vec<u8>> {
     let mut results = HashMap::new();
     if !mod_entry.is_zip() {
@@ -557,25 +595,43 @@ pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, config: &ConfigOptio
     let zip_target: PathBuf = [&zip_target,".zip"].iter().collect();
     let mod_folder = args.folder_name();
     let mod_folder = Path::new(&mod_folder);
-    for mod_idx in mods.load_order() {
-        let mod_info = mods.get_mod(mod_idx);
-        if let Some(current_mod) = mod_info {
-            if current_mod.is_zip() {
-                let files = mod_zip_fetch_all(&current_mod);
-                if to_zip {
+    if to_zip {
+        let mut staged_zip_data = HashMap::new();
+        for mod_idx in mods.load_order() {
+            let mod_info = match mods.get_mod(mod_idx) {
+                Some(m) => m,
+                None => {eprintln!("Error looking up previously registered mod: {}", mod_idx); continue},
+            };
+                if mod_info.is_zip() {
+                    let files = mod_zip_fetch_all(&mod_info);
                     for (file_path,file_data) in files {
-                        let result = write_to_mod_zip(mod_folder, &file_data, Path::new(&file_path), &zip_target);
+                        let _old_data = staged_zip_data.insert(file_path, file_data);
                     }
                 } else {
+                    let files = mod_path_fetch_all(&mod_info);
+                    for (file_path,file_data) in files {
+                        let _old_data = staged_zip_data.insert(file_path, file_data);
+                    }
+                }
+        }
+        let result = write_to_mod_zip(mod_folder, staged_zip_data, &zip_target);
+    } else {
+        for mod_idx in mods.load_order() {
+            let mod_info = match mods.get_mod(mod_idx) {
+                Some(m) => m,
+                None => {eprintln!("Error looking up previously registered mod: {}", mod_idx); continue},
+            };
+                if mod_info.is_zip() {
+                    let files = mod_zip_fetch_all(&mod_info);
+                    for (file_path,file_data) in files {
+                        let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path));
+                    }
+                } else {
+                    let files = mod_path_fetch_all(&mod_info);
                     for (file_path,file_data) in files {
                         let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path));
                     }
                 }
-            } else {
-                let x = 0;
-            }
-        } else {
-            eprintln!("Error looking up previously registered mod: {}",mod_idx);
         }
     }
 }
