@@ -129,15 +129,29 @@ impl ModPack {
     }
 
     pub fn list_replacement_paths(&self) -> Vec<&Path> {
-        let mut replacement_paths: HashSet<&Path> = HashSet::new();
-
+        // Hashmap to preserve insertion order
+        let mut replacement_paths: HashMap<&Path,usize> = HashMap::new();
+        let mut idx = 0;
         for mod_info in &self.mod_list {
             for replacement_path in mod_info.list_replacement_paths() {
-                replacement_paths.insert(replacement_path);
+                replacement_paths.insert(replacement_path,idx);
+                idx+=1;
             }
         }
 
-        replacement_paths.into_iter().collect()
+        let mut path_list: Vec<(&Path,usize)> = replacement_paths.into_iter().collect();
+        path_list.sort_unstable_by(|(_,b1),(_,b2)| b1.cmp(b2));
+        path_list.into_iter().map(|(a,_)| a).collect()
+    }
+
+    pub fn list_user_dirs(&self) -> Vec<String> {
+        let mut user_dirs = Vec::new();
+        for mod_info in &self.mod_list {
+            if let Some(user_dir) = mod_info.get_user_dir() {
+                user_dirs.push(user_dir.clone());
+            }
+        }
+        user_dirs
     }
 }
 

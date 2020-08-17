@@ -64,13 +64,14 @@ impl From<(String,ConfigListItem)> for ConfigOptions {
 
 lazy_static! {
     // Evaluate all of our regular expressions just once for efficiency and things only dying the first time
-    static ref RE_DEPS: Regex    = Regex::new(r#"(?m)dependencies[^}]+"#).unwrap();
-    static ref RE_SING: Regex    = Regex::new(r#""[^"]+""#).unwrap();
-    static ref RE_ARCHIVE: Regex = Regex::new(r#"archive\s*=\s*"[^"]*\.zip""#).unwrap();
-    static ref RE_PATHS: Regex   = Regex::new(r#"path\s*=\s*"[^"]*""#).unwrap();
-    static ref RE_NAMES: Regex   = Regex::new(r#"name\s*=\s*"[^"]*""#).unwrap();
-    static ref RE_REPLACE: Regex = Regex::new(r#"replace_path\s*=\s*"[^"]*""#).unwrap();
-    static ref RE_MOD: Regex     = Regex::new("\"mod/[^\"]*\"").unwrap();
+    static ref RE_DEPS: Regex     = Regex::new(r#"(?m)dependencies[^}]+"#).unwrap();
+    static ref RE_SING: Regex     = Regex::new(r#""[^"]+""#).unwrap();
+    static ref RE_ARCHIVE: Regex  = Regex::new(r#"archive\s*=\s*"[^"]*\.zip""#).unwrap();
+    static ref RE_PATHS: Regex    = Regex::new(r#"path\s*=\s*"[^"]*""#).unwrap();
+    static ref RE_NAMES: Regex    = Regex::new(r#"name\s*=\s*"[^"]*""#).unwrap();
+    static ref RE_REPLACE: Regex  = Regex::new(r#"replace_path\s*=\s*"[^"]*""#).unwrap();
+    static ref RE_MOD: Regex      = Regex::new("\"mod/[^\"]*\"").unwrap();
+    static ref RE_USER_DIR: Regex = Regex::new(r#"user_dir\s*=\s*"[^"]*""#).unwrap();
 }
     
 pub fn parse_configs(arguments: &ArgOptions) -> Result<ConfigOptions,std::io::Error> {
@@ -160,6 +161,7 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
         let path: Vec<String> = grep(&modmod_content, &RE_PATHS, false).iter().map(|x| trim_quotes(x)).collect();
         let name: Vec<String> = grep(&modmod_content, &RE_NAMES, false).iter().map(|x| trim_quotes(x)).collect();
         let replace_paths: Vec<PathBuf> = grep(&modmod_content, &RE_REPLACE, true).iter().map(|x| PathBuf::from(trim_quotes(x))).collect();
+        let user_dir: Option<String> = grep(&modmod_content, &RE_USER_DIR, false).iter().map(|x| trim_quotes(x)).next();
         
         let path: Vec<String> = path.into_iter().filter(|x| !&replace_paths.contains(&PathBuf::from(&x))).collect();
         
@@ -182,14 +184,14 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
             
             let files: Vec<&str> = zipfile.file_names().collect();
             
-            return Some(ModInfo::new(mod_path.to_path_buf(),&files,zip_path,name[0].clone(),&dependencies,&replace_paths));
+            return Some(ModInfo::new(mod_path.to_path_buf(),&files,zip_path,name[0].clone(),&dependencies,&replace_paths,user_dir));
         } else if name.len() == 1 && path.len() == 1 {
             let dir_path: PathBuf = [mod_path.to_str()?,&path[0]].iter().collect();
             let dir_path = files::find_even_with_case(&dir_path)?;
             
             let file_check = files::walk_in_dir(&dir_path,Some(&dir_path));
             let files_ref: Vec<&str> = file_check.iter().map(|x| x.to_str().unwrap_or_default()).collect();
-            return Some(ModInfo::new(mod_path.to_path_buf(),&files_ref,dir_path,name[0].clone(),&dependencies,&replace_paths));
+            return Some(ModInfo::new(mod_path.to_path_buf(),&files_ref,dir_path,name[0].clone(),&dependencies,&replace_paths,user_dir));
         }
         
         None
@@ -339,6 +341,19 @@ pub fn write_mod_desc_to_folder(args: &ArgOptions, mod_pack: &ModPack) -> Result
 
     //Write the header of the mod file with name and archive
     let mut file_contents = format!("name = \"{}\"\narchive = \"mod/{}.zip\"\n", args.patch_name, args.folder_name());
+
+    if args.extract {
+        let mod_user_dirs = mod_pack.list_user_dirs();
+        if !mod_user_dirs.is_empty() {
+            let mut user_dir = String::from("user_dir = \"");
+            for dir in mod_user_dirs {
+                user_dir.push_str(&dir);
+            }
+            user_dir.push_str("\"\n");
+
+            file_contents.push_str(&user_dir);
+        }
+    }
 
     // Write Dependencies into the file
     file_contents.push_str("dependencies = {\n");
