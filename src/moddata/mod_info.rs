@@ -14,7 +14,7 @@ pub struct ModInfo {
 impl ModInfo {
     pub fn new(mod_path: PathBuf, file_list: &[&str], data_path: PathBuf, name: String, dependencies: &[String], replacement_paths: &[PathBuf]) -> ModInfo {
         let file_tree = ModInfo::list_to_tree(file_list);
-        ModInfo {mod_path,file_tree,data_path,name,dependencies: dependencies.iter().cloned().collect(),replacement_paths: replacement_paths.iter().cloned().collect()}
+        ModInfo {mod_path,file_tree,data_path,name,dependencies: dependencies.to_vec(),replacement_paths: replacement_paths.to_vec()}
     }
 
     fn list_to_tree(list: &[&str]) -> HashSet<String> {
@@ -55,5 +55,9 @@ impl ModInfo {
 
     pub fn list_dependencies(&self) -> &[String] {
         &self.dependencies
+    }
+
+    pub fn list_replacement_paths(&self) -> &[PathBuf] {
+        &self.replacement_paths
     }
 }

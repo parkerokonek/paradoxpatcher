@@ -20,3 +20,7 @@ pub fn read_utf8_or_latin1(input: Vec<u8>) -> Option<String> {
         Ok(s) => Some(s),
     }
 }
+
+pub fn normalize_line_endings(data: String) -> String {
+    data.replace("\r\n", "\n").replace("\n", "\r\n")
+}

@@ -127,5 +127,17 @@ impl ModPack {
             None
         }
     }
+
+    pub fn list_replacement_paths(&self) -> Vec<&Path> {
+        let mut replacement_paths: HashSet<&Path> = HashSet::new();
+
+        for mod_info in &self.mod_list {
+            for replacement_path in mod_info.list_replacement_paths() {
+                replacement_paths.insert(replacement_path);
+            }
+        }
+
+        replacement_paths.into_iter().collect()
+    }
 }
 
