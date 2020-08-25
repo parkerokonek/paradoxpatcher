@@ -46,6 +46,7 @@ pub struct ConfigOptions {
     pub mod_path: PathBuf,
     pub data_path: PathBuf,
     pub valid_paths: Vec<PathBuf>,
+    pub valid_extensions: Vec<String>,
 }
 
 #[derive(Deserialize,Debug)]
@@ -53,12 +54,14 @@ struct ConfigListItem {
     datapath: String,
     modpath: String,
     valid_paths: Vec<String>,
+    valid_extensions: Vec<String>,
 }
 
 impl From<(String,ConfigListItem)> for ConfigOptions {
     fn from(from_tuple: (String, ConfigListItem)) -> Self {
         let valid_paths: Vec<PathBuf> = from_tuple.1.valid_paths.iter().map(|x| PathBuf::from(&x)).collect();
-        ConfigOptions {game_name: from_tuple.0, mod_path: PathBuf::from(from_tuple.1.modpath), data_path: PathBuf::from(from_tuple.1.datapath), valid_paths}
+        let valid_extensions: Vec<String> = from_tuple.1.valid_extensions;
+        ConfigOptions {game_name: from_tuple.0, mod_path: PathBuf::from(from_tuple.1.modpath), data_path: PathBuf::from(from_tuple.1.datapath), valid_paths, valid_extensions}
     }
 }
 
@@ -381,12 +384,12 @@ pub fn write_mod_desc_to_folder(args: &ArgOptions, mod_pack: &ModPack) -> Result
     Ok(())
 }
     
-fn mod_zip_fetch(dir: &Path, mod_entry: &ModInfo, normalize: bool, encoding: bool) -> Option<String> {
+fn mod_zip_fetch(dir: &Path, mod_entry: &ModInfo, decode: bool, normalize: bool) -> Option<String> {
         if !mod_entry.is_zip() {
             return None;
         }
         let zip_archive = mod_entry.get_data_path();
-        zips::zip_fetch_file_relative(dir,zip_archive,normalize,encoding)
+        zips::zip_fetch_file_relative(dir,zip_archive,decode,normalize)
 }
 
 fn mod_path_fetch_all(mod_entry: &ModInfo) -> HashMap<String,Vec<u8>> {
@@ -417,11 +420,11 @@ fn vanilla_fetch(dir: &Path, config: &ConfigOptions, decode: bool, normalize: bo
 }
 
 pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, config: &ConfigOptions, to_zip: bool) {
-    let zip_target = args.folder_name();
-    let zip_target: PathBuf = [&zip_target,".zip"].iter().collect();
     let mod_folder = args.folder_name();
     let mod_folder = Path::new(&mod_folder);
     if to_zip {
+        let zip_target = args.folder_name();
+        let zip_target: PathBuf = [&zip_target,".zip"].iter().collect();
         let mut staged_zip_data = HashMap::new();
         for mod_idx in mods.load_order() {
             let mod_info = match mods.get_mod(mod_idx) {

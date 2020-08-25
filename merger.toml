@@ -1,8 +1,10 @@
 [CK2]
 modpath = "/home/parker/.paradoxinteractive/Crusader Kings II"
 datapath = "/home/parker/.steam/steam/steamapps/common/Crusader Kings II"
-valid_paths = [ "history", "common", "decisions", "events", "localisation" ]
+valid_paths = [ "history", "common", "decisions", "events", "localisation", "gfx", "interface", "music", "soundtrack", "tutorial" ]
+valid_extensions = ["gfx","txt","csv","gui","xml"]
 [EU4]
 modpath = "/home/parker/.local/share/Paradox Interactive/Europa Universalis IV"
 datapath = "/home/parker/.steam/steam/steamapps/common/Europa Universalis IV"
 valid_paths = [ "history", "common", "decisions", "events", "localisation", "missions", "hints", "map", "gfx" ]
+valid_extensions = ["gfx","txt","csv","gui","xml"]

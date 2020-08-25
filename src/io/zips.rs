@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use zip::read::ZipArchive;
 use zip::write::ZipWriter;
 
-pub fn zip_fetch_file_relative(file_path: &Path, zip_archive: &Path, normalize: bool, encoding: bool) -> Option<String> {
+pub fn zip_fetch_file_relative(file_path: &Path, zip_archive: &Path, decode: bool, normalize: bool) -> Option<String> {
     let zip_path = find_even_with_case(&zip_archive)?;
         let file = match File::open(&zip_path) {
             Ok(f) => f,
@@ -34,12 +34,7 @@ pub fn zip_fetch_file_relative(file_path: &Path, zip_archive: &Path, normalize: 
                     return None;
                 }
             }
-            if normalize {
-                let result = encodings::read_utf8_or_latin1(output)?;
-                Some(encodings::normalize_line_endings(result))
-            } else {
-                encodings::read_utf8_or_latin1(output)
-            } 
+            encodings::read_bytes_to_string(output,decode,normalize)
         } else {
             None
         }

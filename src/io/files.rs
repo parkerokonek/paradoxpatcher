@@ -21,12 +21,13 @@ pub fn fetch_file_in_path(file_path: &Path, decode: bool, normalize: bool) -> Op
                 return None;
             }
         }
-        return encodings::read_utf8_or_latin1(contents);
+        encodings::read_bytes_to_string(contents,decode,normalize)
     } else if let Err(e) = file {
         eprintln!("{}",e);
+        None
+    } else {
+        None
     }
-    
-    None
 }
 
 pub fn find_even_with_case(path: &Path) -> Option<PathBuf> {
@@ -139,6 +140,9 @@ pub fn fetch_all_files_in_path(path: &Path) -> HashMap<String,Vec<u8>>{
 }
 
 pub fn write_file_with_content(file_path: &Path, file_content: &[u8], encode: bool) -> Result<(),std::io::Error> {
+    if !encode {
+        eprintln!("{} AHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH",encode);
+    }
     let prefix_path = match file_path.parent() {
         Some(p) => p,
         None => return Err(std::io::Error::from_raw_os_error(1)),
@@ -146,7 +150,8 @@ pub fn write_file_with_content(file_path: &Path, file_content: &[u8], encode: bo
 
     let _ = fs::create_dir_all(prefix_path)?;
     if encode {
-        let stringified = match encodings::read_utf8_or_latin1(file_content.to_vec()) {
+        eprintln!("Writing encoded: {}",file_path.display());
+        let stringified = match encodings::read_bytes_to_string(file_content.to_vec(),true,false) {
             Some(s) => s,
             None => return Err(std::io::Error::from_raw_os_error(1)),
         };
@@ -158,4 +163,9 @@ pub fn write_file_with_content(file_path: &Path, file_content: &[u8], encode: bo
         fs::write(file_path, file_content)?;
     }
     Ok(())
+}
+
+pub fn copy_directory_tree(source_dir: &Path, result_dir: &Path, overwrite: bool, ignore_direct: bool) {
+    let from_files_abs = walk_in_dir(source_dir, None);
+    let to_files_abs = walk_in_dir(result_dir, None);
 }
