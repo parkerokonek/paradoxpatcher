@@ -9,12 +9,13 @@ pub struct ModInfo {
     name: String,
     dependencies: Vec<String>,
     replacement_paths: Vec<PathBuf>,
+    user_dir: Option<String>,
 }
 
 impl ModInfo {
-    pub fn new(mod_path: PathBuf, file_list: &[&str], data_path: PathBuf, name: String, dependencies: &[String], replacement_paths: &[PathBuf]) -> ModInfo {
+    pub fn new(mod_path: PathBuf, file_list: &[&str], data_path: PathBuf, name: String, dependencies: &[String], replacement_paths: &[PathBuf], user_dir: Option<String>) -> ModInfo {
         let file_tree = ModInfo::list_to_tree(file_list);
-        ModInfo {mod_path,file_tree,data_path,name,dependencies: dependencies.iter().cloned().collect(),replacement_paths: replacement_paths.iter().cloned().collect()}
+        ModInfo {mod_path,file_tree,data_path,name,dependencies: dependencies.to_vec(),replacement_paths: replacement_paths.to_vec(), user_dir}
     }
 
     fn list_to_tree(list: &[&str]) -> HashSet<String> {
@@ -29,7 +30,7 @@ impl ModInfo {
     pub fn empty(mod_path: PathBuf, data_path: PathBuf, name: String) -> ModInfo {
         let dependencies = Vec::new();
         let replacement_paths = Vec::new();
-        ModInfo{mod_path,file_tree: HashSet::new(),data_path,name,dependencies,replacement_paths}
+        ModInfo{mod_path,file_tree: HashSet::new(),data_path,name,dependencies,replacement_paths,user_dir: None}
     }
 
     pub fn is_zip(&self) -> bool {
@@ -55,5 +56,13 @@ impl ModInfo {
 
     pub fn list_dependencies(&self) -> &[String] {
         &self.dependencies
+    }
+
+    pub fn list_replacement_paths(&self) -> &[PathBuf] {
+        &self.replacement_paths
+    }
+
+    pub fn get_user_dir(&self) -> &Option<String> {
+        &self.user_dir
     }
 }

@@ -14,7 +14,7 @@ impl ModConflict {
         ModConflict{ file_path: path, mod_names: mods.iter().cloned().collect()}
     }
 
-    pub fn compare_mods(mod_list: &[ModInfo],valid_paths: Option<&Vec<PathBuf>>) -> Vec<ModConflict> {
+    pub fn compare_mods(mod_list: &[ModInfo],valid_paths: Option<&Vec<PathBuf>>, valid_extensions: Option<&Vec<String>>) -> Vec<ModConflict> {
         let mut out = Vec::new();
         let mut conflicts: HashMap<String,ModConflict> = HashMap::new();
 
@@ -22,27 +22,25 @@ impl ModConflict {
             for file_path in mod_info.get_filetree() {
                 let mut file_path = file_path.to_string();
                 file_path.make_ascii_lowercase();
-                if let Some(_conf) = conflicts.get(&file_path) {
+                if conflicts.get(&file_path).is_some() {
                     conflicts.get_mut(&file_path).unwrap().mod_names.push(mod_info.get_name().to_string());
                 } else {
                     let conf = ModConflict::new(PathBuf::from(&file_path),&[mod_info.get_name().to_string()]);
+                    let extension = match conf.file_path.extension() {
+                        Some(ext) => ext,
+                        None => continue,
+                    };
                     if let Some(real_valid) = valid_paths {
-                        for valid in real_valid {
-                            if conf.in_folder(valid) && &conf.file_path != valid {
-                                let component = conf.file_path.components().last();
-                                if let Some(end) = component {
-                                    if let Some(value) = end.as_os_str().to_str() {
-                                        if value.contains('.') {
-                                            conflicts.insert(file_path, conf);
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
+                        if !real_valid.iter().any(|p| conf.in_folder(p)) {
+                            continue;
                         }
-                    } else {
-                        conflicts.insert(file_path, conf);
                     }
+                    if let Some(extensions) = valid_extensions {
+                        if !extensions.iter().any(|a| extension == a.as_str()) {
+                            continue;
+                        }
+                    }
+                    conflicts.insert(file_path, conf);
                 }
             }
         }

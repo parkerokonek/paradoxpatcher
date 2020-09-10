@@ -11,16 +11,25 @@ pub struct ModPack {
     mod_lookup: HashMap<String,usize>,
     conflict_lookup: HashMap<String,usize>,
     valid_paths: Vec<PathBuf>,
+    valid_extensions: Vec<String>,
 }
 
 impl ModPack {
     pub fn new() -> Self {
-        ModPack{mod_list: Vec::new(),conflicts: Vec::new(), in_vanilla: Vec::new(),mod_lookup: HashMap::new(), conflict_lookup: HashMap::new(), valid_paths: Vec::new()}
+        ModPack{mod_list: Vec::new(),conflicts: Vec::new(), in_vanilla: Vec::new(),mod_lookup: HashMap::new(), conflict_lookup: HashMap::new(), valid_paths: Vec::new(), valid_extensions: Vec::new()}
     }
 
     pub fn restrict_paths(mut self, valid_paths: &[PathBuf]) -> Self {
         for path in valid_paths {
             self.valid_paths.push(path.clone());
+        }
+
+        self
+    }
+
+    pub fn restrict_extensions(mut self, valid_extensions: &[String]) -> Self {
+        for ext in valid_extensions {
+            self.valid_extensions.push(ext.clone());
         }
 
         self
@@ -91,7 +100,19 @@ impl ModPack {
     }
 
     pub fn generate_conflicts(&mut self) {
-        self.conflicts = ModConflict::compare_mods(&self.mod_list, if self.valid_paths.is_empty() {None} else {Some(&self.valid_paths)});
+        self.conflicts = ModConflict::compare_mods(
+            &self.mod_list, 
+            if self.valid_paths.is_empty() {
+                None
+            } else {
+                Some(&self.valid_paths)
+            },
+            if self.valid_extensions.is_empty() {
+                None
+            } else {
+                Some(&self.valid_extensions)
+            }
+        );
         self.conflict_lookup.clear();
         for (i,conf) in self.conflicts.iter().enumerate() {
             let key: String = conf.path().to_str().unwrap().to_owned();
@@ -126,6 +147,32 @@ impl ModPack {
         } else {
             None
         }
+    }
+
+    pub fn list_replacement_paths(&self) -> Vec<&Path> {
+        // Hashmap to preserve insertion order
+        let mut replacement_paths: HashMap<&Path,usize> = HashMap::new();
+        let mut idx = 0;
+        for mod_info in &self.mod_list {
+            for replacement_path in mod_info.list_replacement_paths() {
+                replacement_paths.insert(replacement_path,idx);
+                idx+=1;
+            }
+        }
+
+        let mut path_list: Vec<(&Path,usize)> = replacement_paths.into_iter().collect();
+        path_list.sort_unstable_by(|(_,b1),(_,b2)| b1.cmp(b2));
+        path_list.into_iter().map(|(a,_)| a).collect()
+    }
+
+    pub fn list_user_dirs(&self) -> Vec<String> {
+        let mut user_dirs = Vec::new();
+        for mod_info in &self.mod_list {
+            if let Some(user_dir) = mod_info.get_user_dir() {
+                user_dirs.push(user_dir.clone());
+            }
+        }
+        user_dirs
     }
 }
 

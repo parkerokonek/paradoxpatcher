@@ -15,6 +15,7 @@ serde = {version = "1.0", features = ["derive"]}
 regex = "1"
 encoding = "0.2"
 diff_match_patch = "0.1"
+lazy_static = "1.4"
 
 
 [dependencies.gtk]

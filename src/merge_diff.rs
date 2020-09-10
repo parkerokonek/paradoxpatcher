@@ -27,13 +27,19 @@ fn create_dmp_preconfig() -> Dmp {
 fn preprocess_text(input_text: &str, comments: bool, empty_lines: bool, trailing: bool, leading: bool) -> String {
     let mut output = String::new();
     for line in input_text.split("\r\n") {
-        let mut new_line = String::new();
+        let mut new_line = line.to_owned();
         if !comments {
-            if let Some(s) = line.splitn(2,'#').nth(1) {
+            if let Some(s) = line.splitn(2,'#').next() {
                 new_line = s.to_owned();
             }
         }
-        if !empty_lines {
+
+        if !trailing {
+            new_line = new_line.trim_end().to_owned();
+        }
+
+        if !leading {
+            new_line = new_line.trim_start().to_owned();
         }
 
         if !new_line.is_empty() || empty_lines {
@@ -56,7 +62,7 @@ fn diff_linemode_nway(base_text: &str, modified_text: &[String]) -> (HashMap<cha
     let mut diffs = Vec::new();
 
     for text in all_strings {
-        let real_text = text;//preprocess_text(&text,true,true,true,true);
+        let real_text = preprocess_text(&text,false,false,false,true);
         
         let mut encoded_text = String::new();
         for line in real_text.split("\r\n") {
@@ -97,7 +103,6 @@ fn patch_nway(source_text: &str, diffs: &mut Vec<Vec<Diff>>) -> Option<String> {
         let mut patch = dmp.patch_make4(source_text, diff);
         let (changed_text,applied_patches) = dmp.patch_apply(&mut patch, &result_text);
         if !applied_patches.iter().fold(true, |a,b| a & b) {
-            eprintln!("Patch FAILED");
             return None;
         }
         result_text = changed_text.iter().collect();
@@ -107,15 +112,10 @@ fn patch_nway(source_text: &str, diffs: &mut Vec<Vec<Diff>>) -> Option<String> {
 
 pub fn diff_single_conflict(base_text: &str, modded_texts: &[String], verbose: bool) -> Option<String> {
     let (character_map,mut diffs,encoded_base) = diff_linemode_nway(base_text, modded_texts);
-    //eprintln!("Created nway diff result");
     let encoded_patched = patch_nway(&encoded_base, &mut diffs)?;
     // Now decode
-    //eprintln!("Created encoded patch");
     let mut result_text = String::new();
-    let mut iter = 0;
-    let mut max = encoded_patched.len();
     for character in encoded_patched.chars() {
-        //eprintln!("searching for something in the character --{}--",character);
         let line = character_map.get(&character)?;
         result_text.push_str(line);
         result_text.push_str("\r\n");

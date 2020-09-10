@@ -664,6 +664,7 @@ dependencies = [
  "encoding",
  "gio",
  "gtk",
+ "lazy_static",
  "regex",
  "serde",
  "toml",
