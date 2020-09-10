@@ -110,7 +110,17 @@ pub fn parse_configs(arguments: &ArgOptions) -> Result<ConfigOptions,std::io::Er
         Err(std::io::Error::new(std::io::ErrorKind::Other, "This is a config parsing error that should never appear."))
 }
 
-    
+/// Performs a search using a pre-compiled regular expression on a given file path and returns all matching strings
+/// If no matches are found, this returns an empty vector.
+/// An error will be printed if the file cannot be opened.
+/// # Arguments
+/// 
+/// * `file_path` - File to open and search for matching strings
+/// 
+/// * `re` - the pre-compiled regex to match against
+/// 
+/// * `all_matches` - if true, return all matches, otherwise only return the first match
+/// 
 fn fgrep(file_path: &Path, re: &Regex, all_matches: bool) -> Vec<String> {
         if let Some(input) = files::fetch_file_in_path(file_path,true,true) {
             return grep(&input,re,all_matches);
@@ -119,7 +129,17 @@ fn fgrep(file_path: &Path, re: &Regex, all_matches: bool) -> Vec<String> {
         
         Vec::new()
 }
-    
+
+/// Performs a search using a pre-compiled regular expression on an input string and returns all matching strings
+/// If no matches are found, this returns an empty vector.
+/// # Arguments
+/// 
+/// * `input` - Text to search over
+/// 
+/// * `re` - the pre-compiled regex to match against
+/// 
+/// * `all_matches` - if true, return all matches, otherwise only return the first match
+/// 
 fn grep(input: &str, re: &Regex, all_matches: bool) -> Vec<String> {
         let mut matches = re.find_iter(&input);
         if all_matches {
@@ -130,7 +150,11 @@ fn grep(input: &str, re: &Regex, all_matches: bool) -> Vec<String> {
         
         Vec::new()
 }
-    
+
+/// Given a path to a Paradox mod description file, generate a list of all its dependencies
+/// #Arguments
+/// 
+/// * `mod_path` - path to a valid mod descriptor file
 fn collect_dependencies(mod_path: &Path) -> Vec<String> {
         let results = fgrep(mod_path,&RE_DEPS,false);
         
@@ -144,7 +168,11 @@ fn collect_dependencies(mod_path: &Path) -> Vec<String> {
             Vec::new()
         }
 }
-    
+
+/// Utility function to remove the quotes from both ends of a string
+/// #Arguments
+/// 
+/// * `input` - string to trim of quotes
 fn trim_quotes(input: &str) -> String {
         let left: Vec<&str> = input.split('"').collect();
         if left.len() == 3 {
@@ -152,7 +180,13 @@ fn trim_quotes(input: &str) -> String {
         }
         String::new()
 }
-    
+
+/// Attempts to create Mod metadata by reading the mod's file directory and description file
+/// #Arguments
+/// 
+/// * `mod_path` - parent path to both the mod content and mod descriptor file
+/// 
+/// * `mod_file` - mod descriptor file name and extension
 fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
         let modmod_path: PathBuf = [mod_path,mod_file].iter().collect();
         let dependencies = collect_dependencies(&modmod_path);
@@ -198,7 +232,11 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
         
         None
 }
-    
+
+/// Given the path to a paradox game's user directory, generate a list of all enabled mods and their metadata
+/// #Arguments
+/// 
+/// * `path` - Path of the game's user directory, typically in Documents or ~/.Paradox\ Interactive/
 pub fn generate_mod_list(path: &Path) -> Vec<ModInfo> {
         let mod_reg = Regex::new("\"mod/[^\"]*\"").unwrap();
         let mut settings = path.to_path_buf();
@@ -220,7 +258,11 @@ pub fn generate_mod_list(path: &Path) -> Vec<ModInfo> {
         }
         mods
 }
-    
+
+/// Generate a list of all files in the main game directory (fitting our folder and extension requirements)
+/// #Arguments
+/// 
+/// * `config` - configuration data
 pub fn files_in_vanilla(config: &ConfigOptions) -> Vec<PathBuf> {
         let vanilla_path = &config.data_path;
         let check_paths: Vec<PathBuf> = config.valid_paths.iter().map(|x| [vanilla_path,x].iter().collect()).collect();
@@ -238,7 +280,17 @@ pub fn files_in_vanilla(config: &ConfigOptions) -> Vec<PathBuf> {
         
         out
 }
-    
+
+/// Performs an automagical merge of the current list of conflicting mods
+/// This can fail for some files, but those files will be placed in their own directory tree for easy manual merging
+/// 
+/// #Arguments
+/// 
+/// * `config` - configuration options for our game
+/// 
+/// * `args` - options left over from arguments, will be removed soon
+/// 
+/// * `mod_pack` - the current mod load order to be merged 
 pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack) -> Result<u32,()> {
     let mut successful = 0;
 
@@ -315,21 +367,61 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
         Ok(successful)
 }
 
+/// Convert a relative path to the current directory to an absolute path
+/// Can likely be deprecated
+/// 
+/// #Arguments
+/// 
+/// * `args` - unused command line arguments
+/// 
+/// * `path` - relative path to make absolute
 fn current_dir_path(_args: &ArgOptions, path: &Path) -> Result<PathBuf,std::io::Error> {
     let current_dir = std::env::current_dir()?;
     Ok(current_dir.join(path))
 }
 
+/// Write a byte buffer to a file in a mod folder
+/// 
+/// #Arguments
+/// 
+/// * `mod_folder` - mod parent directory, typically for merged mod
+/// 
+/// * `contents` - bytes to write into the file
+/// 
+/// * `path` - relative file path in the parent directory
+/// 
+/// * `encode` - if yes, encode in WINDOWS-1252, otherwise write as-is
 fn write_to_mod_folder(mod_folder: &Path, contents: &[u8], path: &Path, encode: bool) -> Result<(),std::io::Error> {
     let full_path = files::relative_folder_path(mod_folder, &path)?;
     files::write_file_with_content(&full_path, contents)
 }
 
+
+/// Write a string to a file in a mod folder
+/// 
+/// #Arguments
+/// 
+/// * `mod_folder` - mod parent directory, typically for merged mod
+/// 
+/// * `contents` - string to write into the file
+/// 
+/// * `path` - relative file path in the parent directory
+/// 
+/// * `encode` - if yes, encode in WINDOWS-1252, otherwise write as-is
 fn write_to_mod_folder_string(mod_folder: &Path, contents: String, path: &Path, encode: bool) -> Result<(),std::io::Error> {
     let full_path = files::relative_folder_path(mod_folder, &path)?;
     files::write_file_with_string(&full_path, contents, encode)
 }
 
+/// Write a set of files and their byte contents to a new zip file, will overwrite an existing file
+/// 
+/// #Arguments
+/// 
+/// * `mod_folder` - parent directory for zip file
+/// 
+/// * `staged_data` - list of file names and associated data
+/// 
+/// * `zip` - zip filename
 fn write_to_mod_zip(mod_folder: &Path, staged_data: HashMap<String,Vec<u8>>, zip: &Path) -> Result<(),std::io::Error> {
     let zip_path = files::relative_folder_path(mod_folder, zip)?;
     zips::zip_write_files(&zip_path,staged_data)
@@ -418,6 +510,10 @@ fn mod_zip_fetch(dir: &Path, mod_entry: &ModInfo, decode: bool, normalize: bool)
         zips::zip_fetch_file_relative(dir,zip_archive,decode,normalize)
 }
 
+/// Produce a map of all relative file paths in a mod file directory and their contents
+/// #Arguments
+/// 
+/// * `mod_entry` - the mod to read
 fn mod_path_fetch_all(mod_entry: &ModInfo) -> HashMap<String,Vec<u8>> {
     if mod_entry.is_zip() {
         HashMap::new()
@@ -426,6 +522,10 @@ fn mod_path_fetch_all(mod_entry: &ModInfo) -> HashMap<String,Vec<u8>> {
     }
 }
 
+/// Produce a map of all relative file paths in a mod zip file and their contents
+/// #Arguments
+/// 
+/// * `mod_entry` - the mod to read
 fn mod_zip_fetch_all(mod_entry: &ModInfo) -> HashMap<String,Vec<u8>> {
     if !mod_entry.is_zip() {
         HashMap::new()
@@ -435,16 +535,46 @@ fn mod_zip_fetch_all(mod_entry: &ModInfo) -> HashMap<String,Vec<u8>> {
     
 }
 
+/// Get the contents of a single file in a mod file directory or zip file
+/// #Arguments
+/// 
+/// * `dir` - file to extact data from
+/// 
+/// * `mod_entry` - mod to extract from
+/// 
+/// * `decode` - if yes, attempt to decode the file contents, otherwise read in bytes as-is
+/// 
+/// * `normalize` - if yes, convert all line-endings to windows-style
 fn mod_path_fetch(dir: &Path, mod_entry: &ModInfo, decode: bool, normalize: bool) -> Option<String> {
         let full_path: PathBuf = [mod_entry.get_data_path(),dir].iter().collect();
         files::fetch_file_in_path(&full_path,decode,normalize)
 }
-    
+
+/// Get the contents of a single file in a vanilla file directory
+/// #Arguments
+/// 
+/// * `dir` - file to extact data from
+/// 
+/// * `config` - information about game directories
+/// 
+/// * `decode` - if yes, attempt to decode the file contents, otherwise read in bytes as-is
+/// 
+/// * `normalize` - if yes, convert all line-endings to windows-style
 fn vanilla_fetch(dir: &Path, config: &ConfigOptions, decode: bool, normalize: bool) -> Option<String> {
         let full_path: PathBuf = config.data_path.join(dir);
         files::fetch_file_in_path(&full_path,decode,normalize)
 }
 
+/// Extract all files from all currently enabled mods into the output mod directory
+/// #Arguments
+/// 
+/// * `mods` - list of enabled mods to extract/copy
+/// 
+/// * `args` - basic output mod info
+/// 
+/// * `config` - information about the game files
+/// 
+/// * `to_zip` - if yes, compress output to zip file, uses a lot of memory as all data is written to disk at once
 pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, config: &ConfigOptions, to_zip: bool) {
     let mod_folder = args.folder_name();
     let mod_folder = Path::new(&mod_folder);
@@ -482,10 +612,11 @@ pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, config: &ConfigOptio
                         let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
                     }
                 } else {
-                    let files = mod_path_fetch_all(&mod_info);
-                    for (file_path,file_data) in files {
-                        let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
-                    }
+                    let res = files::copy_directory_tree(&mod_info.get_data_path() , mod_folder, true, true);
+                    //let files = mod_path_fetch_all(&mod_info);
+                    //for (file_path,file_data) in files {
+                    //    let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
+                    //}
                 }
         }
     }
