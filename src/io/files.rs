@@ -162,7 +162,19 @@ pub fn write_file_with_string(file_path: &Path, file_content: String, encode: bo
     }
 }
 
-pub fn copy_directory_tree(source_dir: &Path, result_dir: &Path, overwrite: bool, ignore_direct: bool) {
-    let from_files_abs = walk_in_dir(source_dir, None);
-    let to_files_abs = walk_in_dir(result_dir, None);
+pub fn copy_directory_tree(source_dir: &Path, result_dir: &Path, overwrite: bool, ignore_direct: bool) -> Result<(),std::io::Error> {
+    //let from_files_abs = walk_in_dir(source_dir, None);
+    let from_files_rel = walk_in_dir(source_dir, Some(source_dir));
+
+    for file in from_files_rel {
+        let from_abs_path = source_dir.join(&file);
+        let to_abs_path = result_dir.join(file);
+
+        if !overwrite || !to_abs_path.exists() {
+            fs::copy(from_abs_path,to_abs_path)?;
+        }
+    }
+
+    Ok(())
 }
+

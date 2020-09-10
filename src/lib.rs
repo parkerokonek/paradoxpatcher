@@ -482,10 +482,11 @@ pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, config: &ConfigOptio
                         let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
                     }
                 } else {
-                    let files = mod_path_fetch_all(&mod_info);
-                    for (file_path,file_data) in files {
-                        let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
-                    }
+                    let res = files::copy_directory_tree(&mod_info.get_data_path() , mod_folder, true, true);
+                    //let files = mod_path_fetch_all(&mod_info);
+                    //for (file_path,file_data) in files {
+                    //    let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
+                    //}
                 }
         }
     }
