@@ -14,7 +14,6 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use zip::read::ZipArchive;
-use zip::write::ZipWriter;
 
 use merge_diff::diff_single_conflict;
 
@@ -287,7 +286,7 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                 let mod_folder = args.folder_name();
                 let mod_folder: &Path = Path::new(&mod_folder);
 
-                match write_to_mod_folder(mod_folder, content.as_bytes(), conf.path(),true) {
+                match write_to_mod_folder_string(mod_folder, content.clone(), conf.path(),true) {
                     Ok(_) => successful+=1,
                     Err(e) => eprintln!("{}",e),
                 };
@@ -298,7 +297,7 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                 //Process vanilla file
                 let mod_folder = args.folder_name() + "_bad";
                 let cur_folder: PathBuf = [&mod_folder,"vanilla"].iter().collect();
-                let _try_write = write_to_mod_folder(&cur_folder, vanilla_file.as_bytes(), conf.path(),true);
+                let _try_write = write_to_mod_folder_string(&cur_folder, vanilla_file, conf.path(), true);
 
                 //Process the rest of the files
                 for (file_index,file_content) in file_indices.iter().zip(file_contents) {
@@ -308,7 +307,7 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                         None => return Err(()),
                     };
                     let cur_folder: PathBuf = [&mod_folder,cur_mod.get_name()].iter().collect();
-                    let _try_write = write_to_mod_folder(&cur_folder, file_content.as_bytes(), conf.path(),true);
+                    let _try_write = write_to_mod_folder_string(&cur_folder, file_content, conf.path(), true);
                 }
             }
         }
@@ -323,7 +322,12 @@ fn current_dir_path(_args: &ArgOptions, path: &Path) -> Result<PathBuf,std::io::
 
 fn write_to_mod_folder(mod_folder: &Path, contents: &[u8], path: &Path, encode: bool) -> Result<(),std::io::Error> {
     let full_path = files::relative_folder_path(mod_folder, &path)?;
-    files::write_file_with_content(&full_path, contents, encode)
+    files::write_file_with_content(&full_path, contents)
+}
+
+fn write_to_mod_folder_string(mod_folder: &Path, contents: String, path: &Path, encode: bool) -> Result<(),std::io::Error> {
+    let full_path = files::relative_folder_path(mod_folder, &path)?;
+    files::write_file_with_string(&full_path, contents, encode)
 }
 
 fn write_to_mod_zip(mod_folder: &Path, staged_data: HashMap<String,Vec<u8>>, zip: &Path) -> Result<(),std::io::Error> {
@@ -331,6 +335,16 @@ fn write_to_mod_zip(mod_folder: &Path, staged_data: HashMap<String,Vec<u8>>, zip
     zips::zip_write_files(&zip_path,staged_data)
     
 }
+
+/// Generates and writes a .mod file for the modpack at the designated location.
+/// Uses the dependencies of all conflicting mods, as well as replacement paths and user directories
+/// Takes name from Arg Options
+/// 
+/// # Arguments
+/// 
+/// * `args` - Program arguments, includes name of mod, data locations, etc.
+/// 
+/// * `mod_pack` - information on all loaded mods, includes conflicting files, enabled mods, etc.
 
 pub fn write_mod_desc_to_folder(args: &ArgOptions, mod_pack: &ModPack) -> Result<(),std::io::Error> {
     let mut mod_file_name = PathBuf::from(args.folder_name());
@@ -383,7 +397,19 @@ pub fn write_mod_desc_to_folder(args: &ArgOptions, mod_pack: &ModPack) -> Result
     fs::write(full_path,file_contents)?;
     Ok(())
 }
-    
+
+/// Wrapper Function for zip_fetch_file_relative that fetches files from a zip folder relative to the mod directory
+/// 
+/// # Arguments
+/// 
+/// * `dir` - Path of the file in the mod zip archive we are fetching
+/// 
+/// * `mod_entry` - Mod information to use for determining which zip archive
+/// 
+/// * `decode` - If yes, decode the file from Windows-1252 into Unicode
+/// 
+/// * `normalize` - If yes, to convert all line endings into Windows style line endings
+/// 
 fn mod_zip_fetch(dir: &Path, mod_entry: &ModInfo, decode: bool, normalize: bool) -> Option<String> {
         if !mod_entry.is_zip() {
             return None;

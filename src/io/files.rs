@@ -139,30 +139,27 @@ pub fn fetch_all_files_in_path(path: &Path) -> HashMap<String,Vec<u8>>{
     results
 }
 
-pub fn write_file_with_content(file_path: &Path, file_content: &[u8], encode: bool) -> Result<(),std::io::Error> {
-    if !encode {
-        eprintln!("{} AHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH",encode);
-    }
+pub fn write_file_with_content(file_path: &Path, file_content: &[u8]) -> Result<(),std::io::Error> {
     let prefix_path = match file_path.parent() {
         Some(p) => p,
         None => return Err(std::io::Error::from_raw_os_error(1)),
     };
 
-    let _ = fs::create_dir_all(prefix_path)?;
-    if encode {
-        eprintln!("Writing encoded: {}",file_path.display());
-        let stringified = match encodings::read_bytes_to_string(file_content.to_vec(),true,false) {
-            Some(s) => s,
-            None => return Err(std::io::Error::from_raw_os_error(1)),
-        };
-        match encodings::encode_latin1(stringified) {
-            Some(content) => fs::write(file_path, content)?,
-            None => return Err(std::io::Error::from_raw_os_error(1)),
-        };
-    } else {
-        fs::write(file_path, file_content)?;
-    }
+    let _result = fs::create_dir_all(prefix_path)?;
+    fs::write(file_path, file_content)?;
     Ok(())
+}
+
+pub fn write_file_with_string(file_path: &Path, file_content: String, encode: bool) -> Result<(),std::io::Error> {
+    let content = if encode {
+        encodings::encode_latin1(file_content)
+    } else {
+        Some(file_content.as_bytes().to_vec())
+    };
+    match content {
+        Some(bytes) => write_file_with_content(file_path, &bytes),
+        None => Err(std::io::Error::from_raw_os_error(1)),
+    }
 }
 
 pub fn copy_directory_tree(source_dir: &Path, result_dir: &Path, overwrite: bool, ignore_direct: bool) {
