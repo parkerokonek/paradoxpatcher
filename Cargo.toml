@@ -16,7 +16,7 @@ regex = "1"
 encoding = "0.2"
 diff_match_patch = "0.1"
 lazy_static = "1.4"
-
+app_dirs = {version = "1.2", optional = true}
 
 [dependencies.gtk]
 version = "0.9"
@@ -29,8 +29,8 @@ features = ["v2_44"]
 optional = true
 
 [features]
-command-line = ["clap"]
-gtk-interface= ["gtk","gio"]
+command-line = ["clap","app_dirs"]
+gui-interface= ["gtk","gio","app_dirs"]
 
 [[bin]]
 name = "merger-cli"
@@ -38,4 +38,4 @@ required-features = ["command-line"]
 
 [[bin]]
 name = "merger-gui"
-required-features = ["gtk-interface"]
+required-features = ["gui-interface"]
