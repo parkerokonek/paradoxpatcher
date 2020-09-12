@@ -1,4 +1,5 @@
-use paradoxmerger::{parse_configs,ModInfo,ModPack,generate_mod_list,files_in_vanilla,extract_all_files,auto_merge,write_mod_desc_to_folder,ArgOptions};
+use paradoxmerger::{ModInfo,ModPack,generate_mod_list,files_in_vanilla,extract_all_files,auto_merge,write_mod_desc_to_folder};
+use paradoxmerger::configs::{ArgOptions,parse_user_config,fetch_user_configs};
 
 use std::path::{PathBuf,Path};
 use clap::{Arg,App};
@@ -6,7 +7,7 @@ use clap::{Arg,App};
 
 fn main() {
     let args = parse_args();
-    let config = parse_configs(&args).expect("Couldn't Parse the config file.");
+    let config = parse_user_config(args,true);
     
     let mut mod_pack = ModPack::new().restrict_paths(&config.valid_paths);
     let mod_list: Vec<ModInfo> = generate_mod_list(&config.mod_path);
@@ -46,7 +47,7 @@ fn main() {
 
 pub fn parse_args() -> ArgOptions {
     let args = App::new("Parker's Paradox Patcher")
-    .version("0.3")
+    .version("0.3.1")
     .about("Merges some mods together automatically sometimes.")
     .author("Parker Okonek")
     .arg(Arg::with_name("config")
@@ -79,7 +80,7 @@ pub fn parse_args() -> ArgOptions {
     
     
     let mut config_path = PathBuf::new();
-    config_path.push(args.value_of("config").unwrap_or("./merger.toml"));
+    config_path.push(args.value_of("config").unwrap_or(PathBuf::new()));
     let extract = args.is_present("extract");
     let dry_run = args.is_present("dry-run");
     let verbose = args.is_present("verbose");

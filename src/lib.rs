@@ -1,6 +1,7 @@
 mod moddata;
 mod merge_diff;
 mod io;
+pub mod configs;
 
 pub use moddata::{mod_info::ModInfo,mod_pack::ModPack};
 
@@ -9,7 +10,6 @@ use std::fs::{self,File};
 use std::io::{prelude::*,BufReader};
 use std::collections::HashMap;
 
-use serde::Deserialize;
 use lazy_static::lazy_static;
 use regex::Regex;
 
@@ -18,51 +18,8 @@ use zip::read::ZipArchive;
 use merge_diff::diff_single_conflict;
 
 use io::{files,zips};
+use configs::{ArgOptions,ConfigOptions};
 
-pub struct ArgOptions {
-    pub config_path: PathBuf,
-    pub extract: bool,
-    pub dry_run: bool,
-    pub verbose: bool,
-    pub game_id: String,
-    pub patch_name: String,
-}
-
-impl ArgOptions {
-    pub fn new(config_path: PathBuf, extract: bool, dry_run: bool, verbose: bool, game_id: String, patch_name: String) -> Self {
-        ArgOptions {config_path,extract,dry_run,verbose,game_id,patch_name}
-    }
-    pub fn folder_name(&self) -> String {
-        let mut mod_folder = self.patch_name.clone();
-        mod_folder.make_ascii_lowercase();
-        mod_folder
-    }
-}
-
-#[derive(Deserialize,Debug)]
-pub struct ConfigOptions {
-    pub game_name: String,
-    pub mod_path: PathBuf,
-    pub data_path: PathBuf,
-    pub valid_paths: Vec<PathBuf>,
-    pub valid_extensions: Vec<String>,
-}
-
-#[derive(Deserialize,Debug)]
-struct ConfigListItem {
-    datapath: String,
-    modpath: String,
-    valid_paths: Vec<String>,
-    valid_extensions: Vec<String>,
-}
-
-impl From<(String,ConfigListItem)> for ConfigOptions {
-    fn from(from_tuple: (String, ConfigListItem)) -> Self {
-        let valid_paths: Vec<PathBuf> = from_tuple.1.valid_paths.iter().map(|x| PathBuf::from(&x)).collect();
-        let valid_extensions: Vec<String> = from_tuple.1.valid_extensions;
-        ConfigOptions {game_name: from_tuple.0, mod_path: PathBuf::from(from_tuple.1.modpath), data_path: PathBuf::from(from_tuple.1.datapath), valid_paths, valid_extensions}
-    }
-}
 
 lazy_static! {
     // Evaluate all of our regular expressions just once for efficiency and things only dying the first time
@@ -74,40 +31,6 @@ lazy_static! {
     static ref RE_REPLACE: Regex  = Regex::new(r#"replace_path\s*=\s*"[^"]*""#).unwrap();
     static ref RE_MOD: Regex      = Regex::new("\"mod/[^\"]*\"").unwrap();
     static ref RE_USER_DIR: Regex = Regex::new(r#"user_dir\s*=\s*"[^"]*""#).unwrap();
-}
-    
-pub fn parse_configs(arguments: &ArgOptions) -> Result<ConfigOptions,std::io::Error> {
-        let config_file = File::open(&arguments.config_path);
-        if let Ok(mut file_ok) = config_file {
-            let mut contents = String::new();
-            let err = file_ok.read_to_string(&mut contents);
-            if let Ok(_e) = err {
-                let configs_untyped: toml::value::Table = toml::from_str(&contents).expect("Configuration file could not be read!");
-                
-                if !arguments.game_id.is_empty() && configs_untyped.keys().find(|k| *k == &arguments.game_id).is_none() {
-                    eprintln!("Game not found in configuration file.");
-                    return Err(std::io::Error::new(std::io::ErrorKind::Other, "Game not found in configuration file."));
-                }
-                
-                let game_id: String = if !arguments.game_id.is_empty() {
-                    arguments.game_id.to_string()
-                }
-                else {
-                    configs_untyped.keys().next().expect("Bye").to_string()
-                };
-                
-                let configs_untyped = configs_untyped[&game_id].to_string();
-                
-                let config: ConfigListItem = toml::from_str(&configs_untyped).expect("Malformed configuration for game found.");
-                
-                return Ok(ConfigOptions::from((game_id,config)));
-            } else if let Err(e) = err {
-                return Err(e);
-            }
-        } else if let Err(file_bad) = config_file {
-            return Err(file_bad);
-        }
-        Err(std::io::Error::new(std::io::ErrorKind::Other, "This is a config parsing error that should never appear."))
 }
 
 /// Performs a search using a pre-compiled regular expression on a given file path and returns all matching strings
