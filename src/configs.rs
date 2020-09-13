@@ -13,9 +13,9 @@ use regex::Regex;
 
 lazy_static! {
     static ref RE_VDF_PATH: Regex = if cfg!(windows) {
-        Regex::new(r#""[^"]*\\[^"]*"\s*"#).unwrap()
+        Regex::new(r#""[^"]*\\[^"]*"\s*"#).expect("Error in compiling Windows VDF Path Regex")
     } else {
-        Regex::new(r#""[^"]*/[^"]*"\s*"#).unwrap()
+        Regex::new(r#""[^"]*/[^"]*"\s*"#).expect("Error in compiling Unix VDF Path Regex")
     };
 }
 
