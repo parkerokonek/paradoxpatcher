@@ -6,7 +6,7 @@ use std::fs::{self,File};
 use std::io::{prelude::*,BufReader};
 use std::collections::HashMap;
 use std::path::{Path,PathBuf};
-use serde::Deserialize;
+use serde::{Deserialize,Serialize};
 
 
 struct SupportedGame {
@@ -51,7 +51,7 @@ pub struct ConfigOptions {
     pub new_launcher: bool,
 }
 
-#[derive(Deserialize,Debug)]
+#[derive(Deserialize,Serialize,Debug)]
 struct ConfigListItem {
     datapath: String,
     modpath: String,
@@ -128,6 +128,7 @@ fn supported_games() -> Vec<SupportedGame> {
 
 pub fn parse_user_config(arguments: &ArgOptions, defaults: bool) -> Result<ConfigOptions,Box<dyn std::error::Error>> {
     let configs = if arguments.config_path.components().count() == 0 {
+        println!("No path given!");
         fetch_user_configs(defaults)?
     } else {
         parse_configs(&arguments.config_path)?
@@ -178,6 +179,7 @@ pub fn fetch_user_configs(defaults: bool) -> Result<Vec<ConfigOptions>, Box<dyn 
     let config_file = File::open(&config_path);
     if let Err(e) = config_file {
         if defaults {
+            println!("Generating new default configs");
             let configs = generate_default_configs();
             let _ok = store_user_configs(&configs)?;
             return Ok(configs);
@@ -190,7 +192,6 @@ pub fn fetch_user_configs(defaults: bool) -> Result<Vec<ConfigOptions>, Box<dyn 
             Err(e) => Err(Box::new(e)),
         };
     }
-    Ok(generate_default_configs())
 }
 
 pub fn store_user_configs(options: &[ConfigOptions]) -> Result<(),Box< dyn std::error::Error>> {
@@ -198,7 +199,18 @@ pub fn store_user_configs(options: &[ConfigOptions]) -> Result<(),Box< dyn std::
     let _e = fs::create_dir_all(user_path.config_dir())?;
     let config_path = user_path.config_dir().join("merger.toml");
 
-    let config_file = File::open(&config_path);
+    let mut config_file = File::create(&config_path)?;
+    let mut config_contents = String::new();
+    for (entry_name,config_item) in options.iter().map(|conf| TomlConfigItem::from(conf)) {
+        let toml_data = toml::to_string(&config_item)?;
+        config_contents.push('[');
+        config_contents.push_str(&entry_name);
+        config_contents.push_str("]\n");
+        config_contents.push_str(&toml_data);
+        config_contents.push('\n');
+    }
+
+    config_file.write_all(config_contents.as_bytes())?;
     Ok(())
 }
 
@@ -237,15 +249,29 @@ fn generate_default_configs() -> Vec<ConfigOptions> {
         config_options.push(ck3_config);
     }
     if let Some(path) = game_paths.get("EU4") {
-        
+        let eu4_config = ConfigOptions::new_with_str(
+            "EU4".to_owned(),
+            get_user_game_data_dir(Some("Europa Universalis IV"), true),
+            path.clone(),
+            &["history", "common", "decisions", "events", "localisation", "missions", "hints", "map", "gfx"],
+            &["gfx","txt","csv","gui","xml"],
+            true,
+            true
+        );
+        config_options.push(eu4_config);
     }
     if let Some(path) = game_paths.get("HOI4") {
-        
+        //TODO: Implement this game default config
+        eprintln!("Game not yet implemented!");
     }
     if let Some(path) = game_paths.get("Stellaris") {
+        //TODO: Implement this game default config
+        eprintln!("Game not yet implemented!");
         
     }
     if let Some(path) = game_paths.get("VIC2") {
+        //TODO: Implement this game default config
+        eprintln!("Game not yet implemented!");
         
     }
     
@@ -261,15 +287,34 @@ fn get_default_steamapps_dir() -> PathBuf {
             PathBuf::from(r#"C:\Program Files (x86)\Steam\steamapps\common"#)
         }
     } else if cfg!(macos) {
-        let home_base = BaseDirs::new().expect("Something went wrong in reading the base dirs.");;
-        PathBuf::from(home_base.home_dir().join(r#"/Library/Application Support/Steam/steamapps/common"#))
+        let home_base = BaseDirs::new().expect("Something went wrong in reading the base dirs.");
+        PathBuf::from(home_base.home_dir().join(r#"Library/Application Support/Steam/steamapps/common"#))
     // Otherwise, assume Linux
     } else {
-        let home_base = BaseDirs::new().expect("Something went wrong in reading the base dirs.");;
-        PathBuf::from(home_base.home_dir().join(r#"/.steam/steam/steamapps/common"#))
+        let home_base = BaseDirs::new().expect("Something went wrong in reading the base dirs.");
+        PathBuf::from(home_base.home_dir().join(r#".steam/steam/steamapps/common"#))
     }
 }
 
 fn get_user_game_data_dir(folder_name: Option<&str>, new_launcher: bool) -> PathBuf {
-    PathBuf::new()
+    let home_base = BaseDirs::new().expect("Somethign went wrong in reading the base dirs.");
+    if cfg!(windows) || cfg!(macos) {
+        match folder_name {
+            Some(folder) => home_base.home_dir().join("Documents").join(folder),
+            None => home_base.home_dir().join("Documents"),
+        }
+    //Otherwise, assume Linux
+    } else {
+        if new_launcher {
+            match folder_name {
+                Some(folder) => home_base.home_dir().join(".local/share").join(folder),
+                None => home_base.home_dir().join(".local/share"),
+            }
+        } else {
+            match folder_name {
+                Some(folder) => home_base.home_dir().join(".paradoxinteractive").join(folder),
+                None => home_base.home_dir().join(".paradoxinteractive"),
+            }
+        }
+    }
 }

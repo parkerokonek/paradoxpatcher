@@ -7,7 +7,7 @@ use clap::{Arg,App};
 
 fn main() {
     let args = parse_args();
-    let config = parse_user_config(args,true);
+    let config = parse_user_config(&args,true).expect("Couldn't read configuration file");
     
     let mut mod_pack = ModPack::new().restrict_paths(&config.valid_paths);
     let mod_list: Vec<ModInfo> = generate_mod_list(&config.mod_path);
@@ -80,7 +80,7 @@ pub fn parse_args() -> ArgOptions {
     
     
     let mut config_path = PathBuf::new();
-    config_path.push(args.value_of("config").unwrap_or(PathBuf::new()));
+    config_path.push(args.value_of("config").unwrap_or(""));
     let extract = args.is_present("extract");
     let dry_run = args.is_present("dry-run");
     let verbose = args.is_present("verbose");
