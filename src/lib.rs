@@ -17,7 +17,7 @@ use zip::read::ZipArchive;
 
 use merge_diff::diff_single_conflict;
 
-use io::{files,zips};
+use io::{files,zips,re};
 use configs::{ArgOptions,ConfigOptions};
 
 
@@ -33,75 +33,22 @@ lazy_static! {
     static ref RE_USER_DIR: Regex = Regex::new(r#"user_dir\s*=\s*"[^"]*""#).unwrap();
 }
 
-/// Performs a search using a pre-compiled regular expression on a given file path and returns all matching strings
-/// If no matches are found, this returns an empty vector.
-/// An error will be printed if the file cannot be opened.
-/// # Arguments
-/// 
-/// * `file_path` - File to open and search for matching strings
-/// 
-/// * `re` - the pre-compiled regex to match against
-/// 
-/// * `all_matches` - if true, return all matches, otherwise only return the first match
-/// 
-fn fgrep(file_path: &Path, re: &Regex, all_matches: bool) -> Vec<String> {
-        if let Some(input) = files::fetch_file_in_path(file_path,true,true) {
-            return grep(&input,re,all_matches);
-        }
-        eprintln!("Failed to open file.\t{}",file_path.display());
-        
-        Vec::new()
-}
-
-/// Performs a search using a pre-compiled regular expression on an input string and returns all matching strings
-/// If no matches are found, this returns an empty vector.
-/// # Arguments
-/// 
-/// * `input` - Text to search over
-/// 
-/// * `re` - the pre-compiled regex to match against
-/// 
-/// * `all_matches` - if true, return all matches, otherwise only return the first match
-/// 
-fn grep(input: &str, re: &Regex, all_matches: bool) -> Vec<String> {
-        let mut matches = re.find_iter(&input);
-        if all_matches {
-            return matches.map(|x| x.as_str().to_string()).collect();
-        } else if let Some(valid) = matches.next() {
-            return vec![valid.as_str().to_string()];
-        }
-        
-        Vec::new()
-}
-
 /// Given a path to a Paradox mod description file, generate a list of all its dependencies
 /// #Arguments
 /// 
 /// * `mod_path` - path to a valid mod descriptor file
 fn collect_dependencies(mod_path: &Path) -> Vec<String> {
-        let results = fgrep(mod_path,&RE_DEPS,false);
+        let results = files::fgrep(mod_path,&RE_DEPS,false);
         
         if !results.is_empty() {
             let dependencies = results[0].replace(r#"\""#, "").replace("\r","");
-            let single_deps = grep(&dependencies,&RE_SING,true);
-            let single_deps: Vec<String> = single_deps.iter().map(|x| trim_quotes(x)).collect();
+            let single_deps = re::grep(&dependencies,&RE_SING,true);
+            let single_deps: Vec<String> = single_deps.iter().map(|x| re::trim_quotes(x)).collect();
             
             single_deps
         } else {
             Vec::new()
         }
-}
-
-/// Utility function to remove the quotes from both ends of a string
-/// #Arguments
-/// 
-/// * `input` - string to trim of quotes
-fn trim_quotes(input: &str) -> String {
-        let left: Vec<&str> = input.split('"').collect();
-        if left.len() == 3 {
-            return left[1].to_string();
-        }
-        String::new()
 }
 
 /// Attempts to create Mod metadata by reading the mod's file directory and description file
@@ -116,11 +63,11 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
         
         let modmod_content = files::fetch_file_in_path(&modmod_path,true,true).unwrap_or_default();
         
-        let archive: Vec<String> = grep(&modmod_content, &RE_ARCHIVE, false).iter().map(|x| trim_quotes(x) ).collect();
-        let path: Vec<String> = grep(&modmod_content, &RE_PATHS, false).iter().map(|x| trim_quotes(x)).collect();
-        let name: Vec<String> = grep(&modmod_content, &RE_NAMES, false).iter().map(|x| trim_quotes(x)).collect();
-        let replace_paths: Vec<PathBuf> = grep(&modmod_content, &RE_REPLACE, true).iter().map(|x| PathBuf::from(trim_quotes(x))).collect();
-        let user_dir: Option<String> = grep(&modmod_content, &RE_USER_DIR, false).iter().map(|x| trim_quotes(x)).next();
+        let archive: Vec<String> = re::grep(&modmod_content, &RE_ARCHIVE, false).iter().map(|x| re::trim_quotes(x) ).collect();
+        let path: Vec<String> = re::grep(&modmod_content, &RE_PATHS, false).iter().map(|x| re::trim_quotes(x)).collect();
+        let name: Vec<String> = re::grep(&modmod_content, &RE_NAMES, false).iter().map(|x| re::trim_quotes(x)).collect();
+        let replace_paths: Vec<PathBuf> = re::grep(&modmod_content, &RE_REPLACE, true).iter().map(|x| PathBuf::from(re::trim_quotes(x))).collect();
+        let user_dir: Option<String> = re::grep(&modmod_content, &RE_USER_DIR, false).iter().map(|x| re::trim_quotes(x)).next();
         
         let path: Vec<String> = path.into_iter().filter(|x| !&replace_paths.contains(&PathBuf::from(&x))).collect();
         
@@ -164,14 +111,14 @@ pub fn generate_mod_list(path: &Path) -> Vec<ModInfo> {
         let mod_reg = Regex::new("\"mod/[^\"]*\"").unwrap();
         let mut settings = path.to_path_buf();
         settings.push("settings.txt");
-        let enabled_mods = fgrep(&settings,&mod_reg,true);
+        let enabled_mods = files::fgrep(&settings,&mod_reg,true);
         if enabled_mods.is_empty() {
             eprintln!("Had an issue reading the settings file.");
             return Vec::new();
         }
         let mut mods = Vec::new();
         for i in enabled_mods {
-            let mod_file: PathBuf = PathBuf::from(trim_quotes(&i));
+            let mod_file: PathBuf = PathBuf::from(re::trim_quotes(&i));
             let smod = generate_single_mod(&path,&mod_file);
             if let Some(good_mod) = smod {
                 mods.push(good_mod);

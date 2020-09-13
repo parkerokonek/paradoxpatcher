@@ -1,5 +1,5 @@
 
-use crate::io::{files};
+use crate::io::{files,re};
 use directories::{UserDirs,ProjectDirs,BaseDirs};
 
 use std::fs::{self,File};
@@ -8,6 +8,16 @@ use std::collections::HashMap;
 use std::path::{Path,PathBuf};
 use serde::{Deserialize,Serialize};
 
+use lazy_static::lazy_static;
+use regex::Regex;
+
+lazy_static! {
+    static ref RE_VDF_PATH: Regex = if cfg!(windows) {
+        Regex::new(r#""[^"]*\\[^"]*"\s*"#).unwrap()
+    } else {
+        Regex::new(r#""[^"]*/[^"]*"\s*"#).unwrap()
+    };
+}
 
 struct SupportedGame {
     game_id: String,
@@ -216,11 +226,14 @@ pub fn store_user_configs(options: &[ConfigOptions]) -> Result<(),Box< dyn std::
 
 fn generate_default_configs() -> Vec<ConfigOptions> {
     let mut game_paths = HashMap::new();
-    let steamapps_dir = get_default_steamapps_dir();
+    let steamapps_dirs = get_all_steam_library_folders();
     for game in supported_games() {
-        let game_dir = steamapps_dir.as_path().join(&game.folder_name);
-        if game_dir.exists() {
-            game_paths.insert(game.game_id,game_dir);
+        for steam_dir in &steamapps_dirs {
+            let game_dir = steam_dir.as_path().join(&game.folder_name);
+            if game_dir.exists() {
+                game_paths.insert(game.game_id,game_dir);
+                break;
+            }
         }
     }
 
@@ -242,7 +255,7 @@ fn generate_default_configs() -> Vec<ConfigOptions> {
             get_user_game_data_dir(Some("Crusader Kings III"), true),
             path.join("game"),
             &["common","content_source","events","fonts","gfx","gui","history","localization","map_data","music","notifications","sound","tests"],
-            &["gfx","txt","csv","gui","xml","settings","compound","editordata"],
+            &["gfx","txt","csv","gui","xml","settings","compound","editordata","yml"],
             true,
             true
         );
@@ -251,22 +264,38 @@ fn generate_default_configs() -> Vec<ConfigOptions> {
     if let Some(path) = game_paths.get("EU4") {
         let eu4_config = ConfigOptions::new_with_str(
             "EU4".to_owned(),
-            get_user_game_data_dir(Some("Europa Universalis IV"), true),
+            get_user_game_data_dir(Some("Europa Univeralis IV"), true),
             path.clone(),
-            &["history", "common", "decisions", "events", "localisation", "missions", "hints", "map", "gfx"],
-            &["gfx","txt","csv","gui","xml"],
+            &["common", "customizable_localization", "decisions", "events", "gfx", "hints", "history", "interface", "localisation", "map", "missions", "music", "sound", "soundtrack", "tests", "tutorial"],
+            &["gfx","txt","csv","gui","xml","yml"],
             true,
             true
         );
         config_options.push(eu4_config);
     }
     if let Some(path) = game_paths.get("HOI4") {
-        //TODO: Implement this game default config
-        eprintln!("Game not yet implemented!");
+        let hoi4_config = ConfigOptions::new_with_str(
+            "HOI4".to_owned(),
+            get_user_game_data_dir(Some("Hearts of Iron IV"), true),
+            path.clone(),
+            &["common", "documentation", "events", "gfx", "history", "interface", "localisation", "map", "music", "portraits", "script", "sound", "tests", "tutorial", "wiki"],
+            &["gfx","txt","csv","gui","xml","yml"],
+            true,
+            true
+        );
+        config_options.push(hoi4_config);
     }
     if let Some(path) = game_paths.get("Stellaris") {
-        //TODO: Implement this game default config
-        eprintln!("Game not yet implemented!");
+        let stellaris_config = ConfigOptions::new_with_str(
+            "Stellaris".to_owned(),
+            get_user_game_data_dir(Some("Stellaris"), true),
+            path.clone(),
+            &["common", "events", "flags", "fonts", "gfx", "interface", "locales", "localisation", "map", "music", "prescripted_countries", "sound"],
+            &["gfx","txt","csv","gui","xml","yml"],
+            true,
+            true
+        );
+        config_options.push(stellaris_config);
         
     }
     if let Some(path) = game_paths.get("VIC2") {
@@ -296,8 +325,25 @@ fn get_default_steamapps_dir() -> PathBuf {
     }
 }
 
+fn get_all_steam_library_folders() -> Vec<PathBuf> { 
+    let mut library_folders = vec![get_default_steamapps_dir()];
+    let steamapps_dir = library_folders[0].parent().expect("Something went horribly wrong with getting the default steamapps directory.");
+
+    println!("{}",&steamapps_dir.join("libraryfolders.vdf").display());
+    let extra_folders = files::fgrep(&steamapps_dir.join("libraryfolders.vdf"), &RE_VDF_PATH, true);
+
+    assert_ne!(extra_folders.is_empty(),true);
+
+    for extra_folder in extra_folders.iter().map(|s| re::trim_quotes(&s)) {
+        println!("{}",extra_folder);
+        library_folders.push(PathBuf::from(extra_folder).join("steamapps/common"));
+    }
+    
+    library_folders
+}
+
 fn get_user_game_data_dir(folder_name: Option<&str>, new_launcher: bool) -> PathBuf {
-    let home_base = BaseDirs::new().expect("Somethign went wrong in reading the base dirs.");
+    let home_base = BaseDirs::new().expect("Something went wrong in reading the base dirs.");
     if cfg!(windows) || cfg!(macos) {
         match folder_name {
             Some(folder) => home_base.home_dir().join("Documents").join(folder),
