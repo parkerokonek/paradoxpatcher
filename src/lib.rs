@@ -25,8 +25,8 @@ lazy_static! {
     // Evaluate all of our regular expressions just once for efficiency and things only dying the first time
     static ref RE_DEPS: Regex     = Regex::new(r#"(?m)dependencies[^}]+"#).unwrap();
     static ref RE_SING: Regex     = Regex::new(r#""[^"]+""#).unwrap();
-    static ref RE_ARCHIVE: Regex  = Regex::new(r#"archive\s*=\s*"[^"]*\.zip""#).unwrap();
-    static ref RE_PATHS: Regex    = Regex::new(r#"path\s*=\s*"[^"]*""#).unwrap();
+    static ref RE_ARCHIVE: Regex  = Regex::new(r#"archive\s*=\s*"[^"]*\.(zip|bin)""#).unwrap();
+    static ref RE_PATHS: Regex    = Regex::new(r#"[^_]path\s*=\s*"[^"]*""#).unwrap();
     static ref RE_NAMES: Regex    = Regex::new(r#"name\s*=\s*"[^"]*""#).unwrap();
     static ref RE_REPLACE: Regex  = Regex::new(r#"replace_path\s*=\s*"[^"]*""#).unwrap();
     static ref RE_MOD: Regex      = Regex::new("\"mod/[^\"]*\"").unwrap();
@@ -69,11 +69,10 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
         let replace_paths: Vec<PathBuf> = re::grep(&modmod_content, &RE_REPLACE, true).iter().map(|x| PathBuf::from(re::trim_quotes(x))).collect();
         let user_dir: Option<String> = re::grep(&modmod_content, &RE_USER_DIR, false).iter().map(|x| re::trim_quotes(x)).next();
         
-        let path: Vec<String> = path.into_iter().filter(|x| !&replace_paths.contains(&PathBuf::from(&x))).collect();
+        //let path: Vec<String> = path.into_iter().filter(|x| !&replace_paths.contains(&PathBuf::from(&x))).collect();
         
         if archive.is_empty() && path.is_empty() || !archive.is_empty() && !path.is_empty() {
-            eprintln!("{}\n Spaghetti-Os", &modmod_path.display());
-            eprintln!("{},{}",archive.is_empty(),path.is_empty());
+            eprintln!("{}\n Spaghetti-Os: {} {}", &modmod_path.display(), archive.is_empty(), path.is_empty());
             return None;
         } else if name.len() == 1 && archive.len() == 1 {
             let zip_path: PathBuf = [mod_path.to_str()?,&archive[0]].iter().collect();
@@ -107,11 +106,10 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
 /// #Arguments
 /// 
 /// * `path` - Path of the game's user directory, typically in Documents or ~/.Paradox\ Interactive/
-pub fn generate_mod_list(path: &Path) -> Vec<ModInfo> {
-        let mod_reg = Regex::new("\"mod/[^\"]*\"").unwrap();
-        let mut settings = path.to_path_buf();
-        settings.push("settings.txt");
-        let enabled_mods = files::fgrep(&settings,&mod_reg,true);
+pub fn generate_mod_list(path: &Path, new_launcher: bool) -> Vec<ModInfo> {
+    if !new_launcher {
+        let settings = path.join("settings.txt");
+        let enabled_mods = files::fgrep(&settings,&RE_MOD,true);
         if enabled_mods.is_empty() {
             eprintln!("Had an issue reading the settings file.");
             return Vec::new();
@@ -127,6 +125,33 @@ pub fn generate_mod_list(path: &Path) -> Vec<ModInfo> {
             }
         }
         mods
+    } else {
+        let settings = path.join("dlc_load.json");
+        let mut mods = Vec::new();
+
+        let all_mods_str = match files::fetch_file_in_path(&settings, false, false) {
+            Some(s) => s,
+            None => {eprintln!("Had an issue finding and reading the settings file."); return mods},
+        };
+        let all_mods: HashMap<String,Vec<String>> = match serde_json::from_str(&all_mods_str) {
+            Ok(val) => val,
+            Err(e) => {eprintln!("{:?}",e); return mods},
+        };
+
+        if let Some(enabled_mods) = all_mods.get("enabled_mods"){
+            for mod_entry in enabled_mods {
+                let mod_file = PathBuf::from(mod_entry);
+                let s_mod = generate_single_mod(&path, &mod_file);
+                if let Some(good_mod) = s_mod {
+                    mods.push(good_mod);
+                } else {
+                    eprintln!("The following mod failed to load:\t{}",mod_file.display());
+                }
+            }
+        }
+
+        mods
+    }
 }
 
 /// Generate a list of all files in the main game directory (fitting our folder and extension requirements)
@@ -170,8 +195,12 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
             }
             let mut file_contents: Vec<String> = Vec::new();
             let mut file_indices: Vec<usize> = Vec::new();
+            let should_transcode = match conf.path().extension() {
+                Some(ext) => !config.no_transcode.iter().any(|no_ext| ext == no_ext.as_str()),
+                None => false,
+            };
 
-            let vanilla_file = match vanilla_fetch(conf.path(),config,true,true) {
+            let vanilla_file = match vanilla_fetch(conf.path(),config,should_transcode,should_transcode) {
                 Some(contents) => contents,
                 None => {
                     eprintln!("Error opening vanilla file for comparison: {}",conf.path().display());
@@ -182,14 +211,14 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
             for (idx,mod_info) in conf.list_mods().iter().enumerate() {
                 if let Some(current) = mod_pack.get_mod(&mod_info) {
                     if current.is_zip() {
-                        if let Some(contents) = mod_zip_fetch(conf.path(), current, true, true) {
+                        if let Some(contents) = mod_zip_fetch(conf.path(), current, should_transcode, should_transcode) {
                             //println!("{}",contents);
                             file_contents.push(contents);
                             file_indices.push(idx);
                         } else {
                             eprintln!("Error unpacking file in previously registered .zip: {}",mod_info);
                         }
-                    } else if let Some(contents) = mod_path_fetch(conf.path(), current,true,true) {
+                    } else if let Some(contents) = mod_path_fetch(conf.path(), current,should_transcode,should_transcode) {
                         //println!("{}",contents);
                         file_contents.push(contents);
                         file_indices.push(idx);
@@ -208,9 +237,9 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                 let mod_folder = args.folder_name();
                 let mod_folder: &Path = Path::new(&mod_folder);
 
-                match write_to_mod_folder_string(mod_folder, content.clone(), conf.path(),true) {
+                match write_to_mod_folder_string(mod_folder, content.clone(), conf.path(), should_transcode) {
                     Ok(_) => successful+=1,
-                    Err(e) => eprintln!("{}",e),
+                    Err(e) => eprintln!("Error with file: {} ==> {} ..with.. {}",conf.path().display(),mod_folder.display(),e),
                 };
                 continue;
             } else {
@@ -219,7 +248,7 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                 //Process vanilla file
                 let mod_folder = args.folder_name() + "_bad";
                 let cur_folder: PathBuf = [&mod_folder,"vanilla"].iter().collect();
-                let _try_write = write_to_mod_folder_string(&cur_folder, vanilla_file, conf.path(), true);
+                let _try_write = write_to_mod_folder_string(&cur_folder, vanilla_file, conf.path(), should_transcode);
 
                 //Process the rest of the files
                 for (file_index,file_content) in file_indices.iter().zip(file_contents) {
@@ -229,7 +258,7 @@ pub fn auto_merge(config: &ConfigOptions, args: &ArgOptions, mod_pack: &ModPack)
                         None => return Err(()),
                     };
                     let cur_folder: PathBuf = [&mod_folder,cur_mod.get_name()].iter().collect();
-                    let _try_write = write_to_mod_folder_string(&cur_folder, file_content, conf.path(), true);
+                    let _try_write = write_to_mod_folder_string(&cur_folder, file_content, conf.path(), should_transcode);
                 }
             }
         }

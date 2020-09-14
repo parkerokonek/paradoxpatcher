@@ -57,7 +57,7 @@ pub struct ConfigOptions {
     pub data_path: PathBuf,
     pub valid_paths: Vec<PathBuf>,
     pub valid_extensions: Vec<String>,
-    pub workshop_enabled: bool,
+    pub no_transcode: Vec<String>,
     pub new_launcher: bool,
 }
 
@@ -67,7 +67,7 @@ struct ConfigListItem {
     modpath: String,
     valid_paths: Vec<String>,
     valid_extensions: Vec<String>,
-    workshop: bool,
+    no_transcode: Vec<String>,
     new_launcher: bool,
 }
 
@@ -83,7 +83,7 @@ impl From<TomlConfigItem> for ConfigOptions {
             data_path: PathBuf::from(config_info.datapath),
             valid_paths,
             valid_extensions,
-            workshop_enabled: config_info.workshop,
+            no_transcode: config_info.no_transcode,
             new_launcher: config_info.new_launcher,
         }
     }
@@ -97,7 +97,7 @@ impl From<&ConfigOptions> for TomlConfigItem {
             modpath: config_option.mod_path.to_string_lossy().to_string(),
             valid_paths: valid_paths,
             valid_extensions: config_option.valid_extensions.clone(),
-            workshop: config_option.workshop_enabled,
+            no_transcode: config_option.no_transcode.clone(),
             new_launcher: config_option.new_launcher,
         };
         (config_option.game_name.clone(),config_list_item)
@@ -105,14 +105,15 @@ impl From<&ConfigOptions> for TomlConfigItem {
 }
 
 impl ConfigOptions {
-    pub fn new(game_name: String, mod_path: PathBuf, data_path: PathBuf, valid_paths: &[PathBuf], valid_extensions: &[String], workshop_enabled: bool, new_launcher: bool) -> Self {
-        ConfigOptions {game_name,mod_path,data_path,valid_paths: valid_paths.to_vec(), valid_extensions: valid_extensions.to_vec(),workshop_enabled,new_launcher}
+    pub fn new(game_name: String, mod_path: PathBuf, data_path: PathBuf, valid_paths: &[PathBuf], valid_extensions: &[String], no_transcode: &[String], new_launcher: bool) -> Self {
+        ConfigOptions {game_name,mod_path,data_path,valid_paths: valid_paths.to_vec(), valid_extensions: valid_extensions.to_vec(),no_transcode: no_transcode.to_vec(),new_launcher}
     }
 
-    pub fn new_with_str(game_name: String, mod_path: PathBuf, data_path: PathBuf, valid_paths: &[&str], valid_extensions: &[&str], workshop_enabled: bool, new_launcher: bool) -> Self {
+    pub fn new_with_str(game_name: String, mod_path: PathBuf, data_path: PathBuf, valid_paths: &[&str], valid_extensions: &[&str], no_transcode: &[&str], new_launcher: bool) -> Self {
         let valid_paths: Vec<PathBuf> = valid_paths.iter().map(|path| PathBuf::from(path)).collect();
         let valid_extensions: Vec<String> = valid_extensions.iter().map(|&extension| extension.to_owned()).collect();
-        ConfigOptions::new(game_name,mod_path,data_path,&valid_paths,&valid_extensions,workshop_enabled,new_launcher)
+        let no_transcode: Vec<String> = no_transcode.iter().map(|&code| code.to_owned()).collect();
+        ConfigOptions::new(game_name,mod_path,data_path,&valid_paths,&valid_extensions,&no_transcode,new_launcher)
     }
 
     pub fn update_paths(self,new_mod_path: PathBuf, new_data_path: PathBuf) -> Self {
@@ -138,7 +139,6 @@ fn supported_games() -> Vec<SupportedGame> {
 
 pub fn parse_user_config(arguments: &ArgOptions, defaults: bool) -> Result<ConfigOptions,Box<dyn std::error::Error>> {
     let configs = if arguments.config_path.components().count() == 0 {
-        println!("No path given!");
         fetch_user_configs(defaults)?
     } else {
         parse_configs(&arguments.config_path)?
@@ -245,7 +245,7 @@ fn generate_default_configs() -> Vec<ConfigOptions> {
             path.clone(),
             &["history", "common", "decisions", "events", "localisation", "gfx", "interface", "music", "soundtrack", "tutorial"],
             &["gfx","txt","csv","gui","xml"],
-            false,
+            &[],
             false
         );
         config_options.push(ck2_config);
@@ -256,7 +256,7 @@ fn generate_default_configs() -> Vec<ConfigOptions> {
             path.join("game"),
             &["common","content_source","events","fonts","gfx","gui","history","localization","map_data","music","notifications","sound","tests"],
             &["gfx","txt","csv","gui","xml","settings","compound","editordata","yml"],
-            true,
+            &["yml"],
             true
         );
         config_options.push(ck3_config);
@@ -264,11 +264,11 @@ fn generate_default_configs() -> Vec<ConfigOptions> {
     if let Some(path) = game_paths.get("EU4") {
         let eu4_config = ConfigOptions::new_with_str(
             "EU4".to_owned(),
-            get_user_game_data_dir(Some("Europa Univeralis IV"), true),
+            get_user_game_data_dir(Some("Europa Universalis IV"), true),
             path.clone(),
             &["common", "customizable_localization", "decisions", "events", "gfx", "hints", "history", "interface", "localisation", "map", "missions", "music", "sound", "soundtrack", "tests", "tutorial"],
             &["gfx","txt","csv","gui","xml","yml"],
-            true,
+            &["yml"],
             true
         );
         config_options.push(eu4_config);
@@ -280,7 +280,7 @@ fn generate_default_configs() -> Vec<ConfigOptions> {
             path.clone(),
             &["common", "documentation", "events", "gfx", "history", "interface", "localisation", "map", "music", "portraits", "script", "sound", "tests", "tutorial", "wiki"],
             &["gfx","txt","csv","gui","xml","yml"],
-            true,
+            &["yml"],
             true
         );
         config_options.push(hoi4_config);
@@ -292,7 +292,7 @@ fn generate_default_configs() -> Vec<ConfigOptions> {
             path.clone(),
             &["common", "events", "flags", "fonts", "gfx", "interface", "locales", "localisation", "map", "music", "prescripted_countries", "sound"],
             &["gfx","txt","csv","gui","xml","yml"],
-            true,
+            &["yml"],
             true
         );
         config_options.push(stellaris_config);
@@ -300,7 +300,7 @@ fn generate_default_configs() -> Vec<ConfigOptions> {
     }
     if let Some(path) = game_paths.get("VIC2") {
         //TODO: Implement this game default config
-        eprintln!("Game not yet implemented!");
+        eprintln!("Game not yet implemented! VIC2");
         
     }
     
@@ -353,8 +353,8 @@ fn get_user_game_data_dir(folder_name: Option<&str>, new_launcher: bool) -> Path
     } else {
         if new_launcher {
             match folder_name {
-                Some(folder) => home_base.home_dir().join(".local/share").join(folder),
-                None => home_base.home_dir().join(".local/share"),
+                Some(folder) => home_base.home_dir().join(".local/share/Paradox Interactive").join(folder),
+                None => home_base.home_dir().join(".local/share/Paradox Interactive"),
             }
         } else {
             match folder_name {

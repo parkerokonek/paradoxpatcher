@@ -39,6 +39,7 @@ impl ModConflict {
                         if !extensions.iter().any(|a| extension == a.as_str()) {
                             continue;
                         }
+
                     }
                     conflicts.insert(file_path, conf);
                 }

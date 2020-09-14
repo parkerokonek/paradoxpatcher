@@ -9,8 +9,8 @@ fn main() {
     let args = parse_args();
     let config = parse_user_config(&args,true).expect("Couldn't read configuration file");
     
-    let mut mod_pack = ModPack::new().restrict_paths(&config.valid_paths);
-    let mod_list: Vec<ModInfo> = generate_mod_list(&config.mod_path);
+    let mut mod_pack = ModPack::new().restrict_paths(&config.valid_paths).restrict_extensions(&config.valid_extensions);
+    let mod_list: Vec<ModInfo> = generate_mod_list(&config.mod_path,config.new_launcher);
     let vanilla = files_in_vanilla(&config);
     let val_ref: Vec<&Path> = vanilla.iter().map(|x| x.as_path()).collect();
     mod_pack.register_vanilla(&val_ref);

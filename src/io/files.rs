@@ -144,7 +144,7 @@ pub fn fetch_all_files_in_path(path: &Path) -> HashMap<String,Vec<u8>>{
 pub fn write_file_with_content(file_path: &Path, file_content: &[u8]) -> Result<(),std::io::Error> {
     let prefix_path = match file_path.parent() {
         Some(p) => p,
-        None => return Err(std::io::Error::from_raw_os_error(1)),
+        None => {eprintln!("This file path is not allowed, I guess: {}",file_path.display()); return Err(std::io::Error::from_raw_os_error(22))},
     };
 
     let _result = fs::create_dir_all(prefix_path)?;
@@ -160,7 +160,7 @@ pub fn write_file_with_string(file_path: &Path, file_content: String, encode: bo
     };
     match content {
         Some(bytes) => write_file_with_content(file_path, &bytes),
-        None => Err(std::io::Error::from_raw_os_error(1)),
+        None => Err(std::io::Error::from_raw_os_error(126)),
     }
 }
 
