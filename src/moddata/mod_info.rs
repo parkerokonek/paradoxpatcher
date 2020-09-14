@@ -36,7 +36,7 @@ impl ModInfo {
     pub fn is_zip(&self) -> bool {
         let out = self.data_path.extension();
         if let Some(ext) = out {
-            ext == "zip"
+            ext == "zip" || ext == "bin"
         } else {
             false
         }

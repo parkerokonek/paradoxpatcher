@@ -1,9 +1,11 @@
 use crate::io::encodings;
+use crate::io::re;
 
 use std::path::{PathBuf,Path};
 use std::fs::{self,File};
 use std::io::{prelude::*,BufReader,Error};
 use std::collections::HashMap;
+use regex::Regex;
 
 fn paths_to_pathbuf(paths: &[&Path]) -> PathBuf {
     paths.iter().collect()
@@ -142,7 +144,7 @@ pub fn fetch_all_files_in_path(path: &Path) -> HashMap<String,Vec<u8>>{
 pub fn write_file_with_content(file_path: &Path, file_content: &[u8]) -> Result<(),std::io::Error> {
     let prefix_path = match file_path.parent() {
         Some(p) => p,
-        None => return Err(std::io::Error::from_raw_os_error(1)),
+        None => {eprintln!("This file path is not allowed, I guess: {}",file_path.display()); return Err(std::io::Error::from_raw_os_error(22))},
     };
 
     let _result = fs::create_dir_all(prefix_path)?;
@@ -158,7 +160,7 @@ pub fn write_file_with_string(file_path: &Path, file_content: String, encode: bo
     };
     match content {
         Some(bytes) => write_file_with_content(file_path, &bytes),
-        None => Err(std::io::Error::from_raw_os_error(1)),
+        None => Err(std::io::Error::from_raw_os_error(126)),
     }
 }
 
@@ -178,3 +180,22 @@ pub fn copy_directory_tree(source_dir: &Path, result_dir: &Path, overwrite: bool
     Ok(())
 }
 
+/// Performs a search using a pre-compiled regular expression on a given file path and returns all matching strings
+/// If no matches are found, this returns an empty vector.
+/// An error will be printed if the file cannot be opened.
+/// # Arguments
+/// 
+/// * `file_path` - File to open and search for matching strings
+/// 
+/// * `re` - the pre-compiled regex to match against
+/// 
+/// * `all_matches` - if true, return all matches, otherwise only return the first match
+/// 
+pub fn fgrep(file_path: &Path, reg: &Regex, all_matches: bool) -> Vec<String> {
+    if let Some(input) = fetch_file_in_path(file_path,true,true) {
+        return re::grep(&input,reg,all_matches);
+    }
+    eprintln!("Failed to open file.\t{}",file_path.display());
+    
+    Vec::new()
+}
