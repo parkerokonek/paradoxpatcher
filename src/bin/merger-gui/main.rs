@@ -9,16 +9,19 @@ use vgtk::{gtk, run, Component, UpdateAction, VNode};
 use vgtk_ext::*;
 
 use paradoxmerger::configs::{ConfigOptions,fetch_user_configs};
+use paradoxmerger::{ModInfo,generate_mod_list};
 
 #[derive(Clone, Debug)]
 struct Model {
-    configs: Vec<ConfigOptions>
+    configs: Vec<ConfigOptions>,
+    mod_list: Vec<ModInfo>,
 }
 
 impl Default for Model {
     fn default() -> Self {
         Self {
             configs: fetch_user_configs(true).unwrap_or(Vec::new()),
+            mod_list: Vec::new(),
         }
     }
 }
@@ -26,6 +29,7 @@ impl Default for Model {
 #[derive(Clone, Debug)]
 enum Message {
     Exit,
+    ConfigSelected(Option<String>)
 }
 
 impl Component for Model {
@@ -36,6 +40,21 @@ impl Component for Model {
         match msg {
             Message::Exit => {
                 vgtk::quit();
+                UpdateAction::None
+            },
+            Message::ConfigSelected(s) => {
+                println!("{:?}",s);
+                if let Some(val) = s {
+                    let conf: Option<&ConfigOptions> = self.configs.iter().find(|m| m.game_name == val);
+                    self.mod_list = match conf {
+                        None => Vec::new(),
+                        Some(mod_conf) => generate_mod_list(&mod_conf.mod_path,mod_conf.new_launcher),
+                    };
+                    for i in &self.mod_list {
+                        println!("{}",i.get_name());
+                    }
+                    println!("===== DONE =====");
+                }
                 UpdateAction::None
             }
         }
@@ -53,7 +72,7 @@ impl Component for Model {
                 </ListBox>
                 <Box orientation=Orientation::Vertical>
                 <Box>
-                    <ComboBoxText items=list_config_entries(&self.configs) tooltip_text="Select a game to patch.".to_owned() />
+                    <ComboBoxText items=list_config_entries(&self.configs) tooltip_text="Select a game to patch.".to_owned() on changed=|e| Message::ConfigSelected(to_string_option(e.get_active_text())) />
                     <Button label="+".to_owned() tooltip_text="Modify game entries.".to_owned() />
                 </Box>
                 <Box>
