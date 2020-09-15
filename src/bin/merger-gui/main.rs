@@ -1,3 +1,4 @@
+#![recursion_limit="256"]
 mod vgtk_ext;
 
 use vgtk::ext::*;
@@ -44,7 +45,27 @@ impl Component for Model {
         gtk! {
             <Application::new_unwrap(Some("com.example.paradoxmerger"), ApplicationFlags::empty())>
                 <Window border_width=20 on destroy=|_| Message::Exit>
-                    <ComboBoxText items=list_config_entries(&self.configs) />
+                <Box>
+                <ListBox>
+                <ListBoxRow>
+                <Label label="I am an example mod".to_owned() />
+                </ListBoxRow>
+                </ListBox>
+                <Box orientation=Orientation::Vertical>
+                <Box>
+                    <ComboBoxText items=list_config_entries(&self.configs) tooltip_text="Select a game to patch.".to_owned() />
+                    <Button label="+".to_owned() tooltip_text="Modify game entries.".to_owned() />
+                </Box>
+                <Box>
+                    <Entry />
+                    <CheckButton />
+                </Box>
+                <Box>
+                    <Button label="Scan".to_owned()/>
+                    <Button label="Patch".to_owned()/>
+                </Box>
+                </Box>
+                </Box>
                 </Window>
             </Application>
         }
