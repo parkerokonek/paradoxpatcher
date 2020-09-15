@@ -50,7 +50,7 @@ impl ArgOptions {
     }
 }
 
-#[derive(Deserialize,Debug)]
+#[derive(Deserialize,Debug,Clone)]
 pub struct ConfigOptions {
     pub game_name: String,
     pub mod_path: PathBuf,
