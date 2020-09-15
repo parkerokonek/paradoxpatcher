@@ -1,4 +1,4 @@
-#![recursion_limit="256"]
+#![recursion_limit="512"]
 mod vgtk_ext;
 
 use vgtk::ext::*;
@@ -15,6 +15,7 @@ use paradoxmerger::{ModInfo,generate_mod_list};
 struct Model {
     configs: Vec<ConfigOptions>,
     mod_list: Vec<ModInfo>,
+    config_selected: Option<String>,
 }
 
 impl Default for Model {
@@ -22,6 +23,7 @@ impl Default for Model {
         Self {
             configs: fetch_user_configs(true).unwrap_or(Vec::new()),
             mod_list: Vec::new(),
+            config_selected: None,
         }
     }
 }
@@ -43,19 +45,15 @@ impl Component for Model {
                 UpdateAction::None
             },
             Message::ConfigSelected(s) => {
-                println!("{:?}",s);
+                self.config_selected = s.clone();
                 if let Some(val) = s {
                     let conf: Option<&ConfigOptions> = self.configs.iter().find(|m| m.game_name == val);
                     self.mod_list = match conf {
                         None => Vec::new(),
                         Some(mod_conf) => generate_mod_list(&mod_conf.mod_path,mod_conf.new_launcher),
                     };
-                    for i in &self.mod_list {
-                        println!("{}",i.get_name());
-                    }
-                    println!("===== DONE =====");
                 }
-                UpdateAction::None
+                UpdateAction::Render
             }
         }
     }
@@ -63,16 +61,24 @@ impl Component for Model {
     fn view(&self) -> VNode<Model> {
         gtk! {
             <Application::new_unwrap(Some("com.example.paradoxmerger"), ApplicationFlags::empty())>
-                <Window border_width=20 on destroy=|_| Message::Exit>
+                <Window border_width=20 title="Parker's Paradox Patcher".to_owned() on destroy=|_| Message::Exit>
                 <Box>
-                <ListBox>
-                <ListBoxRow>
-                <Label label="I am an example mod".to_owned() />
-                </ListBoxRow>
+                <Frame
+                property_width_request=350
+                property_height_request=450>
+                <ListBox border_width=10>
+                {
+                    self.mod_list.iter().map(|mod_entry| gtk! {
+                        <ListBoxRow halign=Align::Start>
+                            <Label label=mod_entry.get_name().to_owned() />
+                        </ListBoxRow>
+                    })
+                }
                 </ListBox>
+                </Frame>
                 <Box orientation=Orientation::Vertical>
                 <Box>
-                    <ComboBoxText items=list_config_entries(&self.configs) tooltip_text="Select a game to patch.".to_owned() on changed=|e| Message::ConfigSelected(to_string_option(e.get_active_text())) />
+                    <ComboBoxText items=list_config_entries(&self.configs) selected=self.config_selected.clone() tooltip_text="Select a game to patch.".to_owned() on changed=|e| Message::ConfigSelected(to_string_option(e.get_active_text())) />
                     <Button label="+".to_owned() tooltip_text="Modify game entries.".to_owned() />
                 </Box>
                 <Box>
@@ -94,7 +100,7 @@ impl Component for Model {
 fn list_config_entries(configs: &[ConfigOptions]) -> Vec<(Option<String>,String)> {
     let mut vec = Vec::new();
     for conf in configs {
-        vec.push((None,conf.game_name.clone()));
+        vec.push((Some(conf.game_name.clone()),conf.game_name.clone()));
     }
     vec
 }

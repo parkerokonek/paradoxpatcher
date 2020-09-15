@@ -5,10 +5,12 @@ use vgtk::lib::gtk::{ComboBoxTextExt};
 pub trait ComboBoxTextExtHelpers: ComboBoxTextExt {
     fn set_items(&self, items: Vec<(Option<String>,String)>);
     fn get_items(&self) -> Vec<(Option<String>,String)>;
+    fn set_selected(&self, id: Option<String>);
+    fn get_selected(&self) -> Option<String>;
 }
 
-impl<A> ComboBoxTextExtHelpers for A where A: ComboBoxTextExt {
-    fn set_items<'a>(&self, items: Vec<(Option<String>,String)>) {
+impl<A: vgtk::lib::gtk::ComboBoxExt> ComboBoxTextExtHelpers for A where A: ComboBoxTextExt {
+    fn set_items(&self, items: Vec<(Option<String>,String)>) {
         self.remove_all();
         for (id,text) in items {
             match id {
@@ -20,6 +22,17 @@ impl<A> ComboBoxTextExtHelpers for A where A: ComboBoxTextExt {
 
     fn get_items(&self) -> Vec<(Option<String>,String)> {
         Vec::new()
+    }
+
+    fn set_selected(&self, id: Option<String>) {
+        let s_id = match id {
+            Some(s) => self.set_active_id(Some(s.as_str())),
+            None => self.set_active_id(None),
+        };
+    }
+
+    fn get_selected(&self) -> Option<String> {
+        None
     }
 }
 
