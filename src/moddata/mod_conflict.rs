@@ -1,5 +1,5 @@
 use std::path::{Path,PathBuf};
-use std::collections::{HashSet,HashMap};
+use std::collections::{HashMap};
 
 use super::mod_info::ModInfo;
 

@@ -1,9 +1,9 @@
 
 use crate::io::{files,re};
-use directories::{UserDirs,ProjectDirs,BaseDirs};
+use directories::{ProjectDirs,BaseDirs};
 
 use std::fs::{self,File};
-use std::io::{prelude::*,BufReader};
+use std::io::{prelude::*};
 use std::collections::HashMap;
 use std::path::{Path,PathBuf};
 use serde::{Deserialize,Serialize};
@@ -95,7 +95,7 @@ impl From<&ConfigOptions> for TomlConfigItem {
         let config_list_item = ConfigListItem {
             datapath: config_option.data_path.to_string_lossy().to_string(),
             modpath: config_option.mod_path.to_string_lossy().to_string(),
-            valid_paths: valid_paths,
+            valid_paths,
             valid_extensions: config_option.valid_extensions.clone(),
             no_transcode: config_option.no_transcode.clone(),
             new_launcher: config_option.new_launcher,
@@ -110,7 +110,7 @@ impl ConfigOptions {
     }
 
     pub fn new_with_str(game_name: String, mod_path: PathBuf, data_path: PathBuf, valid_paths: &[&str], valid_extensions: &[&str], no_transcode: &[&str], new_launcher: bool) -> Self {
-        let valid_paths: Vec<PathBuf> = valid_paths.iter().map(|path| PathBuf::from(path)).collect();
+        let valid_paths: Vec<PathBuf> = valid_paths.iter().map(PathBuf::from).collect();
         let valid_extensions: Vec<String> = valid_extensions.iter().map(|&extension| extension.to_owned()).collect();
         let no_transcode: Vec<String> = no_transcode.iter().map(|&code| code.to_owned()).collect();
         ConfigOptions::new(game_name,mod_path,data_path,&valid_paths,&valid_extensions,&no_transcode,new_launcher)
@@ -192,15 +192,15 @@ pub fn fetch_user_configs(defaults: bool) -> Result<Vec<ConfigOptions>, Box<dyn 
             println!("Generating new default configs");
             let configs = generate_default_configs();
             let _ok = store_user_configs(&configs)?;
-            return Ok(configs);
+            Ok(configs)
         } else {
-            return Err(Box::new(e));
+            Err(Box::new(e))
         }
     } else {
-        return match parse_configs(&config_path) {
+        match parse_configs(&config_path) {
             Ok(v) => Ok(v),
             Err(e) => Err(Box::new(e)),
-        };
+        }
     }
 }
 
@@ -211,7 +211,7 @@ pub fn store_user_configs(options: &[ConfigOptions]) -> Result<(),Box< dyn std::
 
     let mut config_file = File::create(&config_path)?;
     let mut config_contents = String::new();
-    for (entry_name,config_item) in options.iter().map(|conf| TomlConfigItem::from(conf)) {
+    for (entry_name,config_item) in options.iter().map(TomlConfigItem::from) {
         let toml_data = toml::to_string(&config_item)?;
         config_contents.push('[');
         config_contents.push_str(&entry_name);
@@ -298,7 +298,7 @@ fn generate_default_configs() -> Vec<ConfigOptions> {
         config_options.push(stellaris_config);
         
     }
-    if let Some(path) = game_paths.get("VIC2") {
+    if let Some(_path) = game_paths.get("VIC2") {
         //TODO: Implement this game default config
         eprintln!("Game not yet implemented! VIC2");
         
@@ -317,11 +317,11 @@ fn get_default_steamapps_dir() -> PathBuf {
         }
     } else if cfg!(macos) {
         let home_base = BaseDirs::new().expect("Something went wrong in reading the base dirs.");
-        PathBuf::from(home_base.home_dir().join(r#"Library/Application Support/Steam/steamapps/common"#))
+        home_base.home_dir().join(r#"Library/Application Support/Steam/steamapps/common"#)
     // Otherwise, assume Linux
     } else {
         let home_base = BaseDirs::new().expect("Something went wrong in reading the base dirs.");
-        PathBuf::from(home_base.home_dir().join(r#".steam/steam/steamapps/common"#))
+        home_base.home_dir().join(r#".steam/steam/steamapps/common"#)
     }
 }
 
@@ -350,17 +350,15 @@ fn get_user_game_data_dir(folder_name: Option<&str>, new_launcher: bool) -> Path
             None => home_base.home_dir().join("Documents"),
         }
     //Otherwise, assume Linux
+    } else if new_launcher {
+        match folder_name {
+            Some(folder) => home_base.home_dir().join(".local/share/Paradox Interactive").join(folder),
+            None => home_base.home_dir().join(".local/share/Paradox Interactive"),
+        }
     } else {
-        if new_launcher {
-            match folder_name {
-                Some(folder) => home_base.home_dir().join(".local/share/Paradox Interactive").join(folder),
-                None => home_base.home_dir().join(".local/share/Paradox Interactive"),
-            }
-        } else {
-            match folder_name {
-                Some(folder) => home_base.home_dir().join(".paradoxinteractive").join(folder),
-                None => home_base.home_dir().join(".paradoxinteractive"),
-            }
+        match folder_name {
+            Some(folder) => home_base.home_dir().join(".paradoxinteractive").join(folder),
+            None => home_base.home_dir().join(".paradoxinteractive"),
         }
     }
 }

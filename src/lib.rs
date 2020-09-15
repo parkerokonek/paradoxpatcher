@@ -7,7 +7,7 @@ pub use moddata::{mod_info::ModInfo,mod_pack::ModPack};
 
 use std::path::{PathBuf,Path};
 use std::fs::{self,File};
-use std::io::{prelude::*,BufReader};
+use std::io::{BufReader};
 use std::collections::HashMap;
 
 use lazy_static::lazy_static;
@@ -290,7 +290,7 @@ fn current_dir_path(_args: &ArgOptions, path: &Path) -> Result<PathBuf,std::io::
 /// * `path` - relative file path in the parent directory
 /// 
 /// * `encode` - if yes, encode in WINDOWS-1252, otherwise write as-is
-fn write_to_mod_folder(mod_folder: &Path, contents: &[u8], path: &Path, encode: bool) -> Result<(),std::io::Error> {
+fn write_to_mod_folder(mod_folder: &Path, contents: &[u8], path: &Path, _encode: bool) -> Result<(),std::io::Error> {
     let full_path = files::relative_folder_path(mod_folder, &path)?;
     files::write_file_with_content(&full_path, contents)
 }
@@ -474,7 +474,7 @@ fn vanilla_fetch(dir: &Path, config: &ConfigOptions, decode: bool, normalize: bo
 /// * `config` - information about the game files
 /// 
 /// * `to_zip` - if yes, compress output to zip file, uses a lot of memory as all data is written to disk at once
-pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, config: &ConfigOptions, to_zip: bool) {
+pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, _config: &ConfigOptions, to_zip: bool) {
     let mod_folder = args.folder_name();
     let mod_folder = Path::new(&mod_folder);
     if to_zip {
@@ -498,7 +498,7 @@ pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, config: &ConfigOptio
                     }
                 }
         }
-        let result = write_to_mod_zip(mod_folder, staged_zip_data, &zip_target);
+        let _result = write_to_mod_zip(mod_folder, staged_zip_data, &zip_target);
     } else {
         for mod_idx in mods.load_order() {
             let mod_info = match mods.get_mod(mod_idx) {
@@ -508,10 +508,10 @@ pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, config: &ConfigOptio
                 if mod_info.is_zip() {
                     let files = mod_zip_fetch_all(&mod_info);
                     for (file_path,file_data) in files {
-                        let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
+                        let _result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
                     }
                 } else {
-                    let res = files::copy_directory_tree(&mod_info.get_data_path() , mod_folder, true, true);
+                    let _res = files::copy_directory_tree(&mod_info.get_data_path() , mod_folder, true, true);
                     //let files = mod_path_fetch_all(&mod_info);
                     //for (file_path,file_data) in files {
                     //    let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);

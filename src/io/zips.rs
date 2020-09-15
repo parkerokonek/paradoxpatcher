@@ -1,8 +1,8 @@
 use crate::io::encodings;
 use crate::io::files::find_even_with_case;
 
-use std::path::{PathBuf,Path};
-use std::fs::{self,File};
+use std::path::{Path};
+use std::fs::{File};
 use std::io::{prelude::*,BufReader};
 use std::collections::HashMap;
 use zip::read::ZipArchive;
@@ -14,7 +14,7 @@ pub fn zip_fetch_file_relative(file_path: &Path, zip_archive: &Path, decode: boo
             Ok(f) => f,
             Err(e) => {eprintln!("{}",e); return None},
         };
-        let mut reader = BufReader::new(file);
+        let reader = BufReader::new(file);
         let mut zip_file = match ZipArchive::new(reader) {
             Ok(r) => r,
             Err(e) => {eprintln!("{}",e); return None},

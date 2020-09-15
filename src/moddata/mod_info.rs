@@ -1,7 +1,7 @@
 use std::path::{Path,PathBuf};
-use std::collections::{HashSet,HashMap};
+use std::collections::{HashSet};
 
-#[derive(Clone)]
+#[derive(Clone,Debug)]
 pub struct ModInfo {
     mod_path: PathBuf,
     file_tree: HashSet<String>,
