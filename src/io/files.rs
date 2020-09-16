@@ -98,6 +98,31 @@ pub fn walk_in_dir(dir: &Path, relative: Option<&Path>) -> Vec<PathBuf> {
     }
 }
 
+pub fn list_files_in_dir(dir: &Path, extensions: &[&Path]) -> Vec<PathBuf> {
+    let mut results = Vec::new();
+    if dir.is_dir() {
+        let dirs = match fs::read_dir(dir) {
+            Ok(s) => s,
+            Err(e) => {eprintln!("{}",e); return results},
+        };
+        for entry in dirs {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let path = entry.path();
+            if let Some(ext) = path.extension() {
+                if extensions.is_empty() || extensions.iter().any(|ext1| ext1 == ext) {
+                    results.push(path);
+                }
+            } else {
+                continue;
+            }
+        }
+    }
+    results
+}
+
 pub fn relative_folder_path(mod_folder: &Path, path: &Path) -> Result<PathBuf,std::io::Error> {
     let current_dir = std::env::current_dir()?;
     let mod_folder = Path::new(&mod_folder);

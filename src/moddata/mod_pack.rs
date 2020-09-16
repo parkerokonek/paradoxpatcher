@@ -15,7 +15,7 @@ pub struct ModPack {
 }
 
 impl ModPack {
-    pub fn new() -> Self {
+    pub fn default() -> Self {
         ModPack{mod_list: Vec::new(),conflicts: Vec::new(), in_vanilla: Vec::new(),mod_lookup: HashMap::new(), conflict_lookup: HashMap::new(), valid_paths: Vec::new(), valid_extensions: Vec::new()}
     }
 

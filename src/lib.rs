@@ -73,9 +73,10 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
         
         if archive.is_empty() && path.is_empty() || !archive.is_empty() && !path.is_empty() {
             eprintln!("{}\n Spaghetti-Os: {} {}", &modmod_path.display(), archive.is_empty(), path.is_empty());
-            return None;
+            None
         } else if name.len() == 1 && archive.len() == 1 {
-            let zip_path: PathBuf = [mod_path.to_str()?,&archive[0]].iter().collect();
+            let zip_path: PathBuf = mod_path.join(&archive[0]).iter().collect();
+
             let zip_path = files::find_even_with_case(&zip_path)?;
             let file = match File::open(&zip_path) {
                 Ok(f) => f,
@@ -89,68 +90,94 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
             
             let files: Vec<&str> = zipfile.file_names().collect();
             
-            return Some(ModInfo::new(mod_path.to_path_buf(),&files,zip_path,name[0].clone(),&dependencies,&replace_paths,user_dir));
+            Some(ModInfo::new(mod_path.to_path_buf(),&files,zip_path,name[0].clone(),&dependencies,&replace_paths,user_dir))
         } else if name.len() == 1 && path.len() == 1 {
             let dir_path: PathBuf = [mod_path.to_str()?,&path[0]].iter().collect();
             let dir_path = files::find_even_with_case(&dir_path)?;
-            
             let file_check = files::walk_in_dir(&dir_path,Some(&dir_path));
             let files_ref: Vec<&str> = file_check.iter().map(|x| x.to_str().unwrap_or_default()).collect();
-            return Some(ModInfo::new(mod_path.to_path_buf(),&files_ref,dir_path,name[0].clone(),&dependencies,&replace_paths,user_dir));
+            Some(ModInfo::new(mod_path.to_path_buf(),&files_ref,dir_path,name[0].clone(),&dependencies,&replace_paths,user_dir))
+        } else {
+            None
         }
-        
-        None
 }
 
 /// Given the path to a paradox game's user directory, generate a list of all enabled mods and their metadata
 /// #Arguments
 /// 
 /// * `path` - Path of the game's user directory, typically in Documents or ~/.Paradox\ Interactive/
-pub fn generate_mod_list(path: &Path, new_launcher: bool) -> Vec<ModInfo> {
-    if !new_launcher {
-        let settings = path.join("settings.txt");
-        let enabled_mods = files::fgrep(&settings,&RE_MOD,true);
-        if enabled_mods.is_empty() {
-            eprintln!("Had an issue reading the settings file.");
-            return Vec::new();
+pub fn generate_enabled_mod_list(path: &Path, new_launcher: bool) -> Vec<ModInfo> {
+    let enabled_mods = list_enabled_mods(path,new_launcher);
+    let mut mods = Vec::new();
+    
+    for i in enabled_mods {
+        let mod_file = PathBuf::from(i);
+        let smod = generate_single_mod(&path,&mod_file);
+        if let Some(good_mod) = smod {
+            mods.push(good_mod);
+        } else {
+            eprintln!("The following mod failed to load:\t{}",mod_file.display());
         }
-        let mut mods = Vec::new();
-        for i in enabled_mods {
-            let mod_file: PathBuf = PathBuf::from(re::trim_quotes(&i));
-            let smod = generate_single_mod(&path,&mod_file);
-            if let Some(good_mod) = smod {
-                mods.push(good_mod);
-            } else {
-                eprintln!("The following mod failed to load:\t{}",mod_file.display());
-            }
+    }
+
+    mods
+}
+
+/// Generate a list of all mods, enabled or not
+pub fn generate_entire_mod_list(path: &Path, new_launcher: bool) -> Vec<(bool,ModInfo)> {
+    let mut mod_list: Vec<(bool,ModInfo)> = Vec::new();
+    let mod_ext = PathBuf::from("mod");
+    let mod_mod_ext = PathBuf::from("mod.mod");
+    let enabled_mods: Vec<String> = list_enabled_mods(path, new_launcher);
+
+    let mods_path = path.join("mod");
+    let s_mod_path = if new_launcher {mods_path.clone()} else {PathBuf::from(path)};
+
+    for mod_file in files::list_files_in_dir(&mods_path,&[&mod_ext,&mod_mod_ext]) {
+        let s_mod = generate_single_mod(&s_mod_path, &mod_file);
+        if let Some(good_mod) = s_mod {
+
+            let enabled = enabled_mods.iter().any(|file| mod_file == path.join(file.as_str()));
+            mod_list.push((enabled,good_mod));
+        } else {
+            eprintln!("The following mod failed to load:\t{}",mod_file.display());
         }
-        mods
-    } else {
+    }
+
+    mod_list
+}
+
+fn set_entire_mod_list(path: &Path, new_launcher: bool, mod_list: &[(bool,ModInfo)]) -> Result<(),Box<dyn std::error::Error>> {
+    Ok(())
+}
+
+fn list_enabled_mods(path: &Path, new_launcher: bool) -> Vec<String> {
+    if new_launcher {
         let settings = path.join("dlc_load.json");
-        let mut mods = Vec::new();
 
         let all_mods_str = match files::fetch_file_in_path(&settings, false, false) {
             Some(s) => s,
-            None => {eprintln!("Had an issue finding and reading the settings file."); return mods},
+            None => {eprintln!("Had an issue finding and reading the settings file."); return Vec::new()},
         };
         let all_mods: HashMap<String,Vec<String>> = match serde_json::from_str(&all_mods_str) {
             Ok(val) => val,
-            Err(e) => {eprintln!("{:?}",e); return mods},
+            Err(e) => {eprintln!("{:?}",e); return Vec::new()},
         };
 
-        if let Some(enabled_mods) = all_mods.get("enabled_mods"){
-            for mod_entry in enabled_mods {
-                let mod_file = PathBuf::from(mod_entry);
-                let s_mod = generate_single_mod(&path, &mod_file);
-                if let Some(good_mod) = s_mod {
-                    mods.push(good_mod);
-                } else {
-                    eprintln!("The following mod failed to load:\t{}",mod_file.display());
-                }
-            }
+        match all_mods.get("enabled_mods") {
+            Some(enabled) => enabled.clone(),
+            None => Vec::new(),
         }
+    } else {
+        let settings = path.join("settings.txt");
+        let enabled_mods = files::fgrep(&settings,&RE_MOD,true);
 
-        mods
+        if enabled_mods.is_empty() {
+            eprintln!("Had an issue reading the settings file.");
+            Vec::new()
+        } else {
+            enabled_mods.iter().map(|s| re::trim_quotes(s)).collect()
+        }
     }
 }
 

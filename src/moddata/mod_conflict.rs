@@ -11,7 +11,7 @@ pub struct ModConflict {
 
 impl ModConflict {
     pub fn new(path: PathBuf, mods: &[String]) -> ModConflict {
-        ModConflict{ file_path: path, mod_names: mods.iter().cloned().collect()}
+        ModConflict{ file_path: path, mod_names: mods.to_vec()}
     }
 
     pub fn compare_mods(mod_list: &[ModInfo],valid_paths: Option<&Vec<PathBuf>>, valid_extensions: Option<&Vec<String>>) -> Vec<ModConflict> {

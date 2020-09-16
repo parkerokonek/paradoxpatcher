@@ -1,4 +1,4 @@
-use paradoxmerger::{ModInfo,ModPack,generate_mod_list,files_in_vanilla,extract_all_files,auto_merge,write_mod_desc_to_folder};
+use paradoxmerger::{ModInfo,ModPack,generate_enabled_mod_list,files_in_vanilla,extract_all_files,auto_merge,write_mod_desc_to_folder};
 use paradoxmerger::configs::{ArgOptions,parse_user_config,fetch_user_configs};
 
 use std::path::{PathBuf,Path};
@@ -10,7 +10,7 @@ fn main() {
     let config = parse_user_config(&args,true).expect("Couldn't read configuration file");
     
     let mut mod_pack = ModPack::new().restrict_paths(&config.valid_paths).restrict_extensions(&config.valid_extensions);
-    let mod_list: Vec<ModInfo> = generate_mod_list(&config.mod_path,config.new_launcher);
+    let mod_list: Vec<ModInfo> = generate_enabled_mod_list(&config.mod_path,config.new_launcher);
     let vanilla = files_in_vanilla(&config);
     let val_ref: Vec<&Path> = vanilla.iter().map(|x| x.as_path()).collect();
     mod_pack.register_vanilla(&val_ref);
