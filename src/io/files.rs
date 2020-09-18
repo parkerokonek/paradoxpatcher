@@ -98,7 +98,7 @@ pub fn walk_in_dir(dir: &Path, relative: Option<&Path>) -> Vec<PathBuf> {
     }
 }
 
-pub fn list_files_in_dir(dir: &Path, extensions: &[&Path]) -> Vec<PathBuf> {
+pub fn list_files_in_dir(dir: &Path, extensions: &[&Path], relative: bool) -> Vec<PathBuf> {
     let mut results = Vec::new();
     if dir.is_dir() {
         let dirs = match fs::read_dir(dir) {
@@ -113,7 +113,15 @@ pub fn list_files_in_dir(dir: &Path, extensions: &[&Path]) -> Vec<PathBuf> {
             let path = entry.path();
             if let Some(ext) = path.extension() {
                 if extensions.is_empty() || extensions.iter().any(|ext1| ext1 == ext) {
-                    results.push(path);
+                    if relative {
+                        let new_path = match path.strip_prefix(dir) {
+                            Ok(p) => p,
+                            Err(_) => &path,
+                        };
+                        results.push(new_path.to_path_buf());
+                    } else {
+                        results.push(path);
+                    }
                 }
             } else {
                 continue;

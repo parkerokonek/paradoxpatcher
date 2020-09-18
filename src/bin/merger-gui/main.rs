@@ -5,51 +5,29 @@ use vgtk::ext::*;
 use vgtk::lib::gio::ApplicationFlags;
 use vgtk::lib::gtk::*;
 use vgtk::{gtk, run, Component, UpdateAction, VNode};
-use std::path::PathBuf;
+use std::path::{PathBuf,Path};
 
 use vgtk_ext::*;
 use std::env;
 
 use paradoxmerger::configs::{ConfigOptions,fetch_user_configs};
-use paradoxmerger::{ModInfo,generate_enabled_mod_list,generate_entire_mod_list};
+use paradoxmerger::{ModInfo,generate_entire_mod_list,ModPack,ModStatus};
 
 const H_PADDING: i32 = 10;
 const V_PADDING: i32 = 20;
 
-#[derive(Clone, Debug)]
-struct ModEntry {
-    enabled: bool,
-    mod_info: ModInfo,
+trait Renderable {
+    fn render(&self) ->VNode<Model>;
 }
 
-impl ModEntry {
-    fn enabled(&self) -> bool {
-        self.enabled
-    }
-
-    fn mod_info(&self) -> &ModInfo {
-        &self.mod_info
-    }
-
-    fn get_name(&self) -> &str {
-        let mod_info = self.mod_info();
-        mod_info.get_name()
-    }
-
-    fn vec_from_tuple(source: Vec<(bool,ModInfo)>) -> Vec<ModEntry> {
-        let mut mods = Vec::new();
-        for entry in source {
-            mods.push(ModEntry {enabled: entry.0, mod_info: entry.1});
-        }
-        mods
-    }
-
+impl Renderable for ModStatus {
     fn render(&self) -> VNode<Model> {
+        let idx: usize = self.special_number();
         gtk! {
         <ListBoxRow halign=Align::Start>
             <Box>
-            <CheckButton active=self.enabled() />
-            <Label label=self.get_name().to_owned() />
+            <CheckButton active=self.status() on toggled=|_| Message::ToggleModStatus(idx)/>
+            <Label label=self.name() />
             </Box>
         </ListBoxRow>
         }
@@ -59,10 +37,10 @@ impl ModEntry {
 #[derive(Clone, Debug)]
 struct Model {
     configs: Vec<ConfigOptions>,
-    mod_list: Vec<ModEntry>,
+    mod_pack: ModPack,
     config_selected: Option<String>,
     output_path: PathBuf,
-    extact_all: bool,
+    extract_all: bool,
     scan_auto: bool,
     patch_name: String,
 }
@@ -71,12 +49,22 @@ impl Default for Model {
     fn default() -> Self {
         Self {
             configs: fetch_user_configs(true).unwrap_or(Vec::new()),
-            mod_list: Vec::new(),
+            mod_pack: ModPack::default(),
             config_selected: None,
             output_path: env::current_dir().unwrap_or_default(),
-            extact_all: false,
+            extract_all: false,
             scan_auto: false,
             patch_name: String::from("Merged Patch"),
+        }
+    }
+}
+
+impl Model {
+    fn get_current_config(&self) -> Option<&ConfigOptions> {
+        if let Some(s) = &self.config_selected {
+            self.configs.iter().find(|m| m.game_name == s.clone())
+        } else {
+            None
         }
     }
 }
@@ -84,7 +72,15 @@ impl Default for Model {
 #[derive(Clone, Debug)]
 enum Message {
     Exit,
-    ConfigSelected(Option<String>)
+    ConfigSelected(Option<String>),
+    ToggleScan,
+    ToggleExtract,
+    ManualScan,
+    SetPatchName(String),
+    SetOutputPath(String),
+    SaveLoadOrder,
+    GeneratePatch,
+    ToggleModStatus(usize),
 }
 
 impl Component for Model {
@@ -99,14 +95,49 @@ impl Component for Model {
             },
             Message::ConfigSelected(s) => {
                 self.config_selected = s.clone();
-                if let Some(val) = s {
-                    let conf: Option<&ConfigOptions> = self.configs.iter().find(|m| m.game_name == val);
-                    self.mod_list = match conf {
-                        None => Vec::new(),
-                        Some(mod_conf) => { ModEntry::vec_from_tuple( generate_entire_mod_list( &mod_conf.mod_path, mod_conf.new_launcher )) },
-                    };
-                }
+                self.mod_pack = match s {
+                    Some(text) => update_mod_pack(text, self.scan_auto, &self.configs),
+                    None => ModPack::default(),
+                };
                 UpdateAction::Render
+            },
+            Message::ToggleScan => {
+                self.scan_auto = !self.scan_auto;
+                UpdateAction::None
+            },
+            Message::ToggleExtract => {
+                self.extract_all = !self.extract_all;
+                UpdateAction::None
+            },
+            Message::ManualScan => {
+                if let Some(config) = &self.get_current_config() {
+                let vanilla = paradoxmerger::files_in_vanilla(&config);
+                let val_ref: Vec<&Path> = vanilla.iter().map(|x| x.as_path()).collect();
+                self.mod_pack.register_vanilla(&val_ref);
+            
+                self.mod_pack.generate_conflicts();
+                }
+                UpdateAction::None
+            },
+            Message::SetPatchName(patch_name) => {
+                UpdateAction::None
+            },
+            Message::SetOutputPath(output_path) => {
+                UpdateAction::None
+            },
+            Message::SaveLoadOrder => {
+                if let Some(config) = &self.get_current_config() { 
+                    let load_order = self.mod_pack.load_order();
+                    let _res = paradoxmerger::set_entire_mod_list(&config.mod_path, config.new_launcher,&load_order);
+                }
+                UpdateAction::None
+            },
+            Message::GeneratePatch => {
+                UpdateAction::None
+            },
+            Message::ToggleModStatus(num) => {
+                let _res = self.mod_pack.toggle_by_idx(num);
+                UpdateAction::None
             }
         }
     }
@@ -122,7 +153,7 @@ impl Component for Model {
                 <ScrolledWindow>
                 <ListBox border_width=10>
                 {
-                    self.mod_list.iter().map(ModEntry::render)
+                    self.mod_pack.load_order().iter().map(ModStatus::render)
                 }
                 </ListBox>
                 </ScrolledWindow>
@@ -130,7 +161,7 @@ impl Component for Model {
                 <Box orientation=Orientation::Vertical spacing=V_PADDING >
                 <Box spacing=H_PADDING>
                     <ComboBoxText items=list_config_entries(&self.configs) selected=self.config_selected.clone() tooltip_text="Select a game to patch.".to_owned() on changed=|e| Message::ConfigSelected(to_string_option(e.get_active_text())) />
-                    <Button label="+".to_owned() tooltip_text="Modify game entries.".to_owned() />
+                    <Button label=" + ".to_owned() tooltip_text="Modify game entries.".to_owned() />
                 </Box>
                 <Box spacing=H_PADDING>
                     <Label label="Output Directory:".to_owned() />
@@ -138,18 +169,18 @@ impl Component for Model {
                 </Box>
                 <Box spacing=H_PADDING>
                     <Label label="Extract all files: "/>
-                    <CheckButton/>
+                    <CheckButton on toggled=|_| Message::ToggleExtract />
                     <Label label="Scan Automatically (SLOW): "/>
-                    <CheckButton/>
+                    <CheckButton on toggled=|_| Message::ToggleScan />
                 </Box>
                 <Box spacing=H_PADDING>
                     <Label label="Output Mod Title:"/>
                     <Entry property_width_request=200 text=self.patch_name.clone()/>
                 </Box>
                 <Box spacing=H_PADDING>
-                    <Button label="Save Load Order".to_owned()/>
-                    <Button label="Scan Mod Conflicts".to_owned()/>
-                    <Button label="Generate Patch".to_owned()/>
+                    <Button label="Save Load Order".to_owned() on clicked=|_| Message::SaveLoadOrder />
+                    <Button label="Scan Mod Conflicts".to_owned() on clicked=|_| Message::ManualScan />
+                    <Button label="Generate Patch".to_owned() on clicked=|_| Message::GeneratePatch />
                 </Box>
                 </Box>
                 </Box>
@@ -166,6 +197,31 @@ fn list_config_entries(configs: &[ConfigOptions]) -> Vec<(Option<String>,String)
     }
     vec
 }
+
+fn update_mod_pack(selected_idx: String, register_conflicts: bool, configs: &[ConfigOptions]) -> ModPack {
+    let conf: Option<&ConfigOptions> = configs.iter().find(|m| m.game_name == selected_idx);
+    if let Some(config) = conf {
+        let mod_list = generate_entire_mod_list(&config.mod_path, config.new_launcher);
+        let mut new_pack = ModPack::default()
+            .restrict_paths(&config.valid_paths)
+            .restrict_extensions(&config.valid_extensions);
+
+        if register_conflicts {
+            let vanilla = paradoxmerger::files_in_vanilla(&config);
+            let val_ref: Vec<&Path> = vanilla.iter().map(|x| x.as_path()).collect();
+            new_pack.register_vanilla(&val_ref);
+            
+            new_pack.add_mods(&mod_list, true, true);
+        } else {
+            new_pack.add_mods(&mod_list, false, false);
+        }
+        
+        new_pack
+    } else {
+        ModPack::default()
+    }
+}
+
 
 fn main() {
     pretty_env_logger::init();

@@ -4,6 +4,7 @@ use std::collections::{HashMap};
 use super::mod_info::ModInfo;
 use super::mod_conflict::ModConflict;
 
+#[derive(Clone,Debug)]
 pub struct ModPack {
     mod_list: Vec<ModInfo>,
     conflicts: Vec<ModConflict>,
@@ -12,6 +13,32 @@ pub struct ModPack {
     conflict_lookup: HashMap<String,usize>,
     valid_paths: Vec<PathBuf>,
     valid_extensions: Vec<String>,
+}
+
+#[derive(Clone,Debug)]
+pub struct ModStatus {
+    active: bool,
+    mod_name: String,
+    special_number: usize,
+    file_path: PathBuf,
+}
+
+impl ModStatus {
+    pub fn name(&self) -> &str {
+        &self.mod_name
+    }
+
+    pub fn status(&self) -> bool {
+        self.active
+    }
+
+    pub fn special_number(&self) -> usize {
+        self.special_number
+    }
+
+    pub fn mod_file(&self) -> &Path {
+        &self.file_path
+    }
 }
 
 impl ModPack {
@@ -132,20 +159,38 @@ impl ModPack {
         &self.conflicts
     }
 
-    pub fn load_order(&self) -> Vec<&str> {
+    pub fn load_order(&self) -> Vec<ModStatus> {
         let mut out = Vec::new();
-        for file in &self.mod_list {
-            out.push(file.get_name());
+        for (idx,file) in self.mod_list.iter().enumerate() {
+            out.push(ModStatus{active: file.get_active(), mod_name: file.get_name().to_string(), special_number: idx, file_path: PathBuf::from(file.get_mod_path()) });
         }
         out
     }
 
     pub fn get_mod(&self, name: &str) -> Option<&ModInfo> {
-        let id = self.mod_lookup.get(name);
-        if let Some(real_id) = id  {
-            Some(&self.mod_list[*real_id])
-        } else {
+        match self.mod_lookup.get(name) {
+            Some(real_id) => Some(&self.mod_list[*real_id]),
+            None => None,
+        }
+    }
+
+    pub fn toggle_by_name(&mut self, name: &str) -> Option<bool> {
+        let our_mod = match self.mod_lookup.get(name) {
+            None => return None,
+            Some(real) => real,
+        };
+        let old = &self.mod_list[*our_mod].get_active();
+        self.mod_list[*our_mod].toggle();
+        Some(*old)
+    }
+
+    pub fn toggle_by_idx(&mut self, num: usize) -> Option<bool> {
+        if num >= self.mod_list.len() {
             None
+        } else {
+            let old = &self.mod_list[num].get_active();
+            self.mod_list[num].toggle();
+            Some(*old)
         }
     }
 

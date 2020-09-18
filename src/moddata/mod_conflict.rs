@@ -3,7 +3,7 @@ use std::collections::{HashMap};
 
 use super::mod_info::ModInfo;
 
-#[derive(Clone)]
+#[derive(Clone,Debug)]
 pub struct ModConflict {
     file_path: PathBuf,
     mod_names: Vec<String>,
