@@ -341,21 +341,17 @@ fn get_all_steam_library_folders() -> Vec<PathBuf> {
 
 fn get_user_game_data_dir(folder_name: Option<&str>, new_launcher: bool) -> PathBuf {
     let home_base = BaseDirs::new().expect("Something went wrong in reading the base dirs.");
-    if cfg!(windows) || cfg!(macos) {
-        match folder_name {
-            Some(folder) => home_base.home_dir().join("Documents/Paradox Interactive").join(folder),
-            None => home_base.home_dir().join("Documents/Paradox Interactive"),
-        }
+    let base = if cfg!(windows) || cfg!(macos) {
+        home_base.home_dir().join("Documents/Paradox Interactive")
     //Otherwise, assume Linux
     } else if new_launcher {
-        match folder_name {
-            Some(folder) => home_base.home_dir().join(".local/share/Paradox Interactive").join(folder),
-            None => home_base.home_dir().join(".local/share/Paradox Interactive"),
-        }
+        home_base.home_dir().join(".local/share/Paradox Interactive")
     } else {
-        match folder_name {
-            Some(folder) => home_base.home_dir().join(".paradoxinteractive").join(folder),
-            None => home_base.home_dir().join(".paradoxinteractive"),
-        }
+        home_base.home_dir().join(".paradoxinteractive")
+    };
+
+    match folder_name {
+        Some(folder) => base.join(folder),
+        None => base,
     }
 }
