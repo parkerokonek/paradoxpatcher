@@ -52,7 +52,7 @@ impl ModStatus {
 
 impl ModPack {
     pub fn default() -> Self {
-        ModPack{mod_list: Vec::new(),conflicts: Vec::new(), in_vanilla: Vec::new(),mod_lookup: HashMap::new(), conflict_lookup: HashMap::new(), valid_paths: Vec::new(), valid_extensions: Vec::new(), noncrypto_hash: xx::hash64(String::new())}
+        ModPack{mod_list: Vec::new(),conflicts: Vec::new(), in_vanilla: Vec::new(),mod_lookup: HashMap::new(), conflict_lookup: HashMap::new(), valid_paths: Vec::new(), valid_extensions: Vec::new(), noncrypto_hash: hash64(&String::new())}
     }
 
     pub fn restrict_paths(mut self, valid_paths: &[PathBuf]) -> Self {
