@@ -75,7 +75,7 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
             eprintln!("{}\n Spaghetti-Os: {} {}", &modmod_path.display(), archive.is_empty(), path.is_empty());
             None
         } else if name.len() == 1 && archive.len() == 1 {
-            let zip_path: PathBuf = mod_path.join(&archive[0]).iter().collect();
+            let zip_path: PathBuf = mod_path.join(&archive[0]);
 
             let zip_path = files::find_even_with_case(&zip_path)?;
             let file = match File::open(&zip_path) {
@@ -92,7 +92,7 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
             
             Some(ModInfo::new(mod_file.to_path_buf(),&files,zip_path,name[0].clone(),&dependencies,&replace_paths,user_dir,true))
         } else if name.len() == 1 && path.len() == 1 {
-            let dir_path: PathBuf = [mod_path.to_str()?,&path[0]].iter().collect();
+            let dir_path: PathBuf = mod_path.join(&path[0]);
             let dir_path = files::find_even_with_case(&dir_path)?;
             let file_check = files::walk_in_dir(&dir_path,Some(&dir_path));
             let files_ref: Vec<&str> = file_check.iter().map(|x| x.to_str().unwrap_or_default()).collect();
@@ -584,7 +584,7 @@ pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, _config: &ConfigOpti
                         let _result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
                     }
                 } else {
-                    let _res = files::copy_directory_tree(&mod_info.get_data_path() , mod_folder, true, true);
+                    let _res = files::copy_directory_tree(&mod_info.get_data_path() , &mod_folder, true, true);
                     //let files = mod_path_fetch_all(&mod_info);
                     //for (file_path,file_data) in files {
                     //    let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);

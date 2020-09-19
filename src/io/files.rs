@@ -182,25 +182,25 @@ pub fn write_file_with_content(file_path: &Path, file_content: &[u8]) -> Result<
     Ok(())
 }
 
-pub fn write_file_with_string(file_path: &Path, file_content: String, encode: bool) -> Result<(),std::io::Error> {
+pub fn write_file_with_string<P: AsRef<Path>>(file_path: P, file_content: String, encode: bool) -> Result<(),std::io::Error> {
     let content = if encode {
         encodings::encode_latin1(file_content)
     } else {
         Some(file_content.as_bytes().to_vec())
     };
     match content {
-        Some(bytes) => write_file_with_content(file_path, &bytes),
+        Some(bytes) => write_file_with_content(file_path.as_ref(), &bytes),
         None => Err(std::io::Error::from_raw_os_error(126)),
     }
 }
 
-pub fn copy_directory_tree(source_dir: &Path, result_dir: &Path, overwrite: bool, _ignore_direct: bool) -> Result<(),std::io::Error> {
+pub fn copy_directory_tree<P: AsRef<Path>>(source_dir: P, result_dir: P, overwrite: bool, _ignore_direct: bool) -> Result<(),std::io::Error> {
     //let from_files_abs = walk_in_dir(source_dir, None);
-    let from_files_rel = walk_in_dir(source_dir, Some(source_dir));
+    let from_files_rel = walk_in_dir(source_dir.as_ref(), Some(source_dir.as_ref()));
 
     for file in from_files_rel {
-        let from_abs_path = source_dir.join(&file);
-        let to_abs_path = result_dir.join(file);
+        let from_abs_path = source_dir.as_ref().join(&file);
+        let to_abs_path = result_dir.as_ref().join(file);
 
         if !overwrite || !to_abs_path.exists() {
             fs::copy(from_abs_path,to_abs_path)?;
@@ -221,11 +221,19 @@ pub fn copy_directory_tree(source_dir: &Path, result_dir: &Path, overwrite: bool
 /// 
 /// * `all_matches` - if true, return all matches, otherwise only return the first match
 /// 
-pub fn fgrep(file_path: &Path, reg: &Regex, all_matches: bool) -> Vec<String> {
-    if let Some(input) = fetch_file_in_path(file_path,true,true) {
+pub fn fgrep<P: AsRef<Path>>(file_path: P, reg: &Regex, all_matches: bool) -> Vec<String> {
+    if let Some(input) = fetch_file_in_path(file_path.as_ref(),true,true) {
         return re::grep(&input,reg,all_matches);
     }
-    eprintln!("Failed to open file.\t{}",file_path.display());
+    eprintln!("Failed to open file.\t{}",file_path.as_ref().display());
     
     Vec::new()
+}
+
+pub fn join_unless_absolute<P: AsRef<Path>>(path_1: P, path_2: P) -> PathBuf {
+    if path_2.as_ref().is_absolute() {
+        path_2.as_ref().to_path_buf()
+    } else {
+        path_1.as_ref().join(path_2)
+    }
 }
