@@ -329,10 +329,7 @@ fn get_all_steam_library_folders() -> Vec<PathBuf> {
     let mut library_folders = vec![get_default_steamapps_dir()];
     let steamapps_dir = library_folders[0].parent().expect("Something went horribly wrong with getting the default steamapps directory.");
 
-    println!("{}",&steamapps_dir.join("libraryfolders.vdf").display());
     let extra_folders = files::fgrep(&steamapps_dir.join("libraryfolders.vdf"), &RE_VDF_PATH, true);
-
-    assert_ne!(extra_folders.is_empty(),true);
 
     for extra_folder in extra_folders.iter().map(|s| re::trim_quotes(&s)) {
         println!("{}",extra_folder);

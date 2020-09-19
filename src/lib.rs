@@ -3,7 +3,7 @@ mod merge_diff;
 mod io;
 pub mod configs;
 
-pub use moddata::{mod_info::ModInfo,mod_pack::ModPack,mod_pack::ModStatus};
+pub use moddata::{mod_info::ModInfo,mod_pack::ModPack,mod_pack::ModStatus,mod_pack::ModToken};
 
 use std::path::{PathBuf,Path};
 use std::fs::{self,File};
@@ -60,14 +60,8 @@ fn collect_dependencies(mod_path: &Path) -> Vec<String> {
 fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
         let modmod_path: PathBuf = mod_path.join(mod_file);
         let dependencies = collect_dependencies(&modmod_path);
-        
-        println!("{} {} // {}",mod_path.display(),mod_file.display(),modmod_path.display());
 
         let modmod_content = files::fetch_file_in_path(&modmod_path,true,true).unwrap_or_default();
-
-        if modmod_content.len() == 0 {
-            eprintln!("UH OH STINKY");
-        }
         
         let archive: Vec<String> = re::grep(&modmod_content, &RE_ARCHIVE, false).iter().map(|x| re::trim_quotes(x) ).collect();
         let path: Vec<String> = re::grep(&modmod_content, &RE_PATHS, false).iter().map(|x| re::trim_quotes(x)).collect();
@@ -137,7 +131,7 @@ pub fn generate_entire_mod_list(path: &Path, new_launcher: bool) -> Vec<ModInfo>
     let enabled_mods: Vec<String> = list_enabled_mods(path, new_launcher);
 
     let mods_path = path.join("mod");
-    let s_mod_path = if new_launcher {mods_path.clone()} else {PathBuf::from(path)};
+    let s_mod_path = PathBuf::from(path);
 
     for mod_file in files::list_files_in_dir(&mods_path,&[&mod_ext,&mod_mod_ext],true) {
         let mod_mod = PathBuf::from("mod");
@@ -145,7 +139,7 @@ pub fn generate_entire_mod_list(path: &Path, new_launcher: bool) -> Vec<ModInfo>
         let s_mod = generate_single_mod(&s_mod_path, &mod_file);
         if let Some(good_mod) = s_mod {
 
-            let enabled = enabled_mods.iter().any(|file| mod_file == path.join(file.as_str()));
+            let enabled = enabled_mods.iter().any(|file| mod_file == PathBuf::from(file.as_str()));
             mod_list.push(good_mod.with_active_state(enabled));
         } else {
             eprintln!("The following mod failed to load:\t{}",mod_file.display());

@@ -11,7 +11,7 @@ use vgtk_ext::*;
 use std::env;
 
 use paradoxmerger::configs::{ConfigOptions,fetch_user_configs};
-use paradoxmerger::{ModInfo,generate_entire_mod_list,ModPack,ModStatus};
+use paradoxmerger::{ModInfo,generate_entire_mod_list,ModPack,ModStatus,ModToken};
 
 const H_PADDING: i32 = 10;
 const V_PADDING: i32 = 20;
@@ -22,11 +22,11 @@ trait Renderable {
 
 impl Renderable for ModStatus {
     fn render(&self) -> VNode<Model> {
-        let idx: usize = self.special_number();
+        let token = self.special_number();
         gtk! {
         <ListBoxRow halign=Align::Start>
             <Box>
-            <CheckButton active=self.status() on toggled=|_| Message::ToggleModStatus(idx)/>
+            <CheckButton active=self.status() on toggled=|_| Message::ToggleModStatus(token)/>
             <Label label=self.name() />
             </Box>
         </ListBoxRow>
@@ -80,7 +80,7 @@ enum Message {
     SetOutputPath(String),
     SaveLoadOrder,
     GeneratePatch,
-    ToggleModStatus(usize),
+    ToggleModStatus(ModToken),
 }
 
 impl Component for Model {
@@ -135,8 +135,11 @@ impl Component for Model {
             Message::GeneratePatch => {
                 UpdateAction::None
             },
-            Message::ToggleModStatus(num) => {
-                let _res = self.mod_pack.toggle_by_idx(num);
+            Message::ToggleModStatus(token) => {
+                match self.mod_pack.toggle_by_token(token) {
+                    Some(_) => (),
+                    None => {eprintln!("Could not verify token!");},
+                };
                 UpdateAction::None
             }
         }
