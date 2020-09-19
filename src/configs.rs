@@ -343,8 +343,8 @@ fn get_user_game_data_dir(folder_name: Option<&str>, new_launcher: bool) -> Path
     let home_base = BaseDirs::new().expect("Something went wrong in reading the base dirs.");
     if cfg!(windows) || cfg!(macos) {
         match folder_name {
-            Some(folder) => home_base.home_dir().join("Documents").join(folder),
-            None => home_base.home_dir().join("Documents"),
+            Some(folder) => home_base.home_dir().join("Documents/Paradox Interactive").join(folder),
+            None => home_base.home_dir().join("Documents/Paradox Interactive"),
         }
     //Otherwise, assume Linux
     } else if new_launcher {
