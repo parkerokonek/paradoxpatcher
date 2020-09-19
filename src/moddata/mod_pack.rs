@@ -1,7 +1,7 @@
 use std::path::{Path,PathBuf};
 use std::collections::{HashMap};
 
-use fasthash::xx;
+use fxhash::hash64;
 
 use super::mod_info::ModInfo;
 use super::mod_conflict::ModConflict;
@@ -240,7 +240,7 @@ impl ModPack {
             hashee.push_str(&game_id);
             hashee.push_str(&number.to_string());
         }
-        self.noncrypto_hash = xx::hash64(hashee);
+        self.noncrypto_hash = hash64(&hashee);
     }
 }
 
