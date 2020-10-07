@@ -148,7 +148,7 @@ impl Component for Model {
                     if self.extract_all {
                         extract_all_files(&self.mod_pack, &args, &conf, false, &self.output_path);
                     }
-                    auto_merge(conf,&args,&self.mod_pack);
+                    let merge_result = auto_merge(conf,&args,&self.mod_pack);
                     
                     
                     let _res2 = vgtk::run_dialog::<MergeDialog>(vgtk::current_window().as_ref());
@@ -167,7 +167,7 @@ impl Component for Model {
 
     fn view(&self) -> VNode<Model> {
         gtk! {
-            <Application::new_unwrap(Some("com.example.paradoxmerger"), ApplicationFlags::empty())>
+            <Application::new_unwrap(Some("com.parkerokonek.paradoxmerger"), ApplicationFlags::empty())>
                 <Window border_width=20 title="Parker's Paradox Patcher".to_owned() on destroy=|_| Message::Exit>
                 <Box spacing=H_PADDING>
                 <Frame
