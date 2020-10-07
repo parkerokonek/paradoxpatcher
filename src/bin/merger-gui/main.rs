@@ -6,13 +6,12 @@ use vgtk::lib::gio::ApplicationFlags;
 use vgtk::lib::gtk::*;
 use vgtk::{gtk, run, Component, UpdateAction, VNode};
 use std::path::{PathBuf,Path};
-use async_std::task::block_on;
 
 use vgtk_ext::*;
 use std::env;
 
 use paradoxmerger::configs::{ConfigOptions,fetch_user_configs,ArgOptions};
-use paradoxmerger::{ModInfo,generate_entire_mod_list,ModPack,ModStatus,ModToken,auto_merge,extract_all_files};
+use paradoxmerger::{generate_entire_mod_list,ModPack,ModStatus,ModToken,auto_merge,extract_all_files};
 
 const H_PADDING: i32 = 10;
 const V_PADDING: i32 = 20;
@@ -152,7 +151,7 @@ impl Component for Model {
                     auto_merge(conf,&args,&self.mod_pack);
                     
                     
-                    let res2 = vgtk::run_dialog::<MergeDialog>(vgtk::current_window().as_ref());
+                    let _res2 = vgtk::run_dialog::<MergeDialog>(vgtk::current_window().as_ref());
                 }
                 UpdateAction::None
             },

@@ -25,7 +25,7 @@ impl<A: vgtk::lib::gtk::ComboBoxExt> ComboBoxTextExtHelpers for A where A: Combo
     }
 
     fn set_selected(&self, id: Option<String>) {
-        let s_id = match id {
+        let _id = match id {
             Some(s) => self.set_active_id(Some(s.as_str())),
             None => self.set_active_id(None),
         };
