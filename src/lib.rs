@@ -555,6 +555,7 @@ pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, _config: &ConfigOpti
         let zip_target: PathBuf = [&zip_target,".zip"].iter().collect();
         let mut staged_zip_data = HashMap::new();
         for mod_idx in mods.load_order() {
+            if mod_idx.status() {
             let mod_info = match mods.get_mod(mod_idx.name()) {
                 Some(m) => m,
                 None => {eprintln!("Error looking up previously registered mod: {}", mod_idx.name()); continue},
@@ -570,10 +571,12 @@ pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, _config: &ConfigOpti
                         let _old_data = staged_zip_data.insert(file_path, file_data);
                     }
                 }
+            }
         }
         let _result = write_to_mod_zip(mod_folder, staged_zip_data, &zip_target);
     } else {
         for mod_idx in mods.load_order() {
+            if mod_idx.status() {
             let mod_info = match mods.get_mod(mod_idx.name()) {
                 Some(m) => m,
                 None => {eprintln!("Error looking up previously registered mod: {}", mod_idx.name()); continue},
@@ -591,5 +594,6 @@ pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, _config: &ConfigOpti
                     //}
                 }
         }
+    }
     }
 }
