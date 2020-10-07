@@ -547,9 +547,9 @@ fn vanilla_fetch(dir: &Path, config: &ConfigOptions, decode: bool, normalize: bo
 /// * `config` - information about the game files
 /// 
 /// * `to_zip` - if yes, compress output to zip file, uses a lot of memory as all data is written to disk at once
-pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, _config: &ConfigOptions, to_zip: bool) {
-    let mod_folder = args.folder_name();
-    let mod_folder = Path::new(&mod_folder);
+pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, _config: &ConfigOptions, to_zip: bool, destination: &Path) {
+    let mod_folder_buf = destination.join(args.folder_name());
+    let mod_folder = mod_folder_buf.as_path();
     if to_zip {
         let zip_target = args.folder_name();
         let zip_target: PathBuf = [&zip_target,".zip"].iter().collect();

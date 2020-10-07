@@ -36,9 +36,15 @@ impl<A: vgtk::lib::gtk::ComboBoxExt> ComboBoxTextExtHelpers for A where A: Combo
     }
 }
 
+// MISC functions
+
 pub fn to_string_option<S: AsRef<str>>(old_option: Option<S>) -> Option<String> {
     match old_option {
         None => None,
         Some(gs) => Some(String::from(gs.as_ref())),
     }
+}
+
+pub fn gstring_to_string<S: AsRef<str>>(old_string: S) -> String {
+    String::from(old_string.as_ref())
 }

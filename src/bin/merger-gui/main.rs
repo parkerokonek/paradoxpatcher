@@ -6,12 +6,13 @@ use vgtk::lib::gio::ApplicationFlags;
 use vgtk::lib::gtk::*;
 use vgtk::{gtk, run, Component, UpdateAction, VNode};
 use std::path::{PathBuf,Path};
+use async_std::task::block_on;
 
 use vgtk_ext::*;
 use std::env;
 
-use paradoxmerger::configs::{ConfigOptions,fetch_user_configs};
-use paradoxmerger::{ModInfo,generate_entire_mod_list,ModPack,ModStatus,ModToken};
+use paradoxmerger::configs::{ConfigOptions,fetch_user_configs,ArgOptions};
+use paradoxmerger::{ModInfo,generate_entire_mod_list,ModPack,ModStatus,ModToken,auto_merge,extract_all_files};
 
 const H_PADDING: i32 = 10;
 const V_PADDING: i32 = 20;
@@ -83,6 +84,10 @@ enum Message {
     ToggleModStatus(ModToken),
 }
 
+async fn print_ok_dialog() -> vgtk::lib::gtk::ResponseType {
+    vgtk::message_dialog(vgtk::current_window().as_ref(), DialogFlags::MODAL, MessageType::Info, ButtonsType::OkCancel, true, "Successfully merged").await
+}
+
 impl Component for Model {
     type Message = Message;
     type Properties = ();
@@ -120,9 +125,11 @@ impl Component for Model {
                 UpdateAction::None
             },
             Message::SetPatchName(patch_name) => {
+                self.patch_name = patch_name.clone();
                 UpdateAction::None
             },
             Message::SetOutputPath(output_path) => {
+                self.output_path = PathBuf::from(output_path);
                 UpdateAction::None
             },
             Message::SaveLoadOrder => {
@@ -133,6 +140,20 @@ impl Component for Model {
                 UpdateAction::None
             },
             Message::GeneratePatch => {
+                if let Some(conf_name) = &self.config_selected {
+                    let conf = self.configs.iter().find(|c| &c.game_name == conf_name);
+                    let conf = match conf {Some(c) => c, _ => return UpdateAction::None};
+
+                    let args = ArgOptions::new(PathBuf::new(), self.extract_all, false, true, String::new(), self.patch_name.clone());
+
+                    if self.extract_all {
+                        extract_all_files(&self.mod_pack, &args, &conf, false, &self.output_path);
+                    }
+                    auto_merge(conf,&args,&self.mod_pack);
+                    
+                    
+                    let res2 = vgtk::run_dialog::<MergeDialog>(vgtk::current_window().as_ref());
+                }
                 UpdateAction::None
             },
             Message::ToggleModStatus(token) => {
@@ -168,7 +189,7 @@ impl Component for Model {
                 </Box>
                 <Box spacing=H_PADDING>
                     <Label label="Output Directory:".to_owned() />
-                    <Entry property_width_request=300 text=self.output_path.to_string_lossy().as_ref().clone()/>
+                    <Entry property_width_request=300 text=self.output_path.to_string_lossy().as_ref().clone() on changed=|a| Message::SetOutputPath(gstring_to_string(a.get_text())) />
                 </Box>
                 <Box spacing=H_PADDING>
                     <Label label="Extract all files: "/>
@@ -178,7 +199,7 @@ impl Component for Model {
                 </Box>
                 <Box spacing=H_PADDING>
                     <Label label="Output Mod Title:"/>
-                    <Entry property_width_request=200 text=self.patch_name.clone()/>
+                    <Entry property_width_request=200 text=self.patch_name.clone() on changed=|a| Message::SetPatchName(gstring_to_string(a.get_text()))/>
                 </Box>
                 <Box spacing=H_PADDING>
                     <Button label="Save Load Order".to_owned() on clicked=|_| Message::SaveLoadOrder />
@@ -222,6 +243,39 @@ fn update_mod_pack(selected_idx: String, register_conflicts: bool, configs: &[Co
         new_pack
     } else {
         ModPack::default()
+    }
+}
+
+// Our pop up window to indicate merging has finished.MergeDialog
+// Later this will have a progress bar indicating how much of the files have been merged
+pub struct MergeDialog;
+/*
+impl MergeDialog {
+    async fn run() -> i32 {
+        vgtk::run_dialog::<MergeDialog>(vgtk::current_window().as_ref())
+    }
+}*/
+
+impl Default for MergeDialog {
+    fn default() -> Self {
+        MergeDialog {}
+    }
+}
+
+impl Component for MergeDialog {
+    type Message = ();
+    type Properties = ();
+
+    fn view(&self) -> VNode<Self> {
+        gtk! {
+            <Dialog::with_buttons(
+                Some("Merging Mods"),
+                None as Option<&Window>,
+                DialogFlags::MODAL,
+                &[("Ok", ResponseType::Ok)]
+            )>
+            </Dialog>
+        }
     }
 }
 
