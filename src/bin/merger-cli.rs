@@ -2,6 +2,7 @@ use paradoxmerger::{ModInfo,ModPack,generate_enabled_mod_list,files_in_vanilla,e
 use paradoxmerger::configs::{ArgOptions,parse_user_config,fetch_user_configs};
 
 use std::path::{PathBuf,Path};
+use std::env::current_dir;
 use clap::{Arg,App};
 
 
@@ -20,7 +21,8 @@ fn main() {
     if !args.dry_run {
         if args.extract{
             println!("Extracting all files, this could take some time.");
-            extract_all_files(&mod_pack, &args, &config, false);
+            let cur_dir = current_dir().unwrap_or_default();
+            extract_all_files(&mod_pack, &args, &config, false, &cur_dir);
         }
 
         let aout = auto_merge(&config, &args , &mod_pack);
