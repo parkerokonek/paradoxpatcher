@@ -16,5 +16,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: Install Deps
+      run: sudo apt install lib-gtk3.0
     - name: Build
       run: cargo build --features gtk-interface --bin merger-gui --verbose
