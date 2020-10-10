@@ -44,6 +44,7 @@ cargo build --release --features gui-interface --bin merger-gui
 ```
 
 ## Usage
+### CLI Usage
 ```
 USAGE:
     paradoxmerger [FLAGS] [OPTIONS] <patch_name> [game_id]
