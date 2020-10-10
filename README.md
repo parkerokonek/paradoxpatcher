@@ -11,11 +11,32 @@ These patches seem to work for most mods, but run into issues specifically with 
 Using the extract flag is recommended, as it ensures that every person using the modpack has identical data and only needs to enable a single mod.
 ## Building
 The current state of the project is experimental at best.
-Install cargo and clone the repository, then cd to the folder and run:
+Requires rust's cargo/rustup to compile.
+
+Install cargo and clone the repository.
+### CLI Interface
 ```
+cd /path/to/repository
 cargo build --release --features command-line --bin merger-cli
 ```
-Requires rust's cargo/rustup to compile.
+### GUI Interface
+Requires the GTK-3 dev libraries for your OS or distribution.
+On Arch:
+```
+# pacman -S gtk3
+```
+On Ubuntu:
+```
+# apt install libgtk-3-dev
+```
+On Windows:
+Install the gtk3 libraries using [MSYS2](https://www.msys2.org/)
+
+After installing the dependencies run cargo using the following flags.
+and then build using:
+```
+cargo build --release --features gui-interface --bin merger-gui
+```
 
 ## Usage
 ```
