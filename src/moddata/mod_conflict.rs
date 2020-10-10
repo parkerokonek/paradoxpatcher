@@ -1,9 +1,9 @@
 use std::path::{Path,PathBuf};
-use std::collections::{HashSet,HashMap};
+use std::collections::{HashMap};
 
 use super::mod_info::ModInfo;
 
-#[derive(Clone)]
+#[derive(Clone,Debug)]
 pub struct ModConflict {
     file_path: PathBuf,
     mod_names: Vec<String>,
@@ -11,7 +11,7 @@ pub struct ModConflict {
 
 impl ModConflict {
     pub fn new(path: PathBuf, mods: &[String]) -> ModConflict {
-        ModConflict{ file_path: path, mod_names: mods.iter().cloned().collect()}
+        ModConflict{ file_path: path, mod_names: mods.to_vec()}
     }
 
     pub fn compare_mods(mod_list: &[ModInfo],valid_paths: Option<&Vec<PathBuf>>, valid_extensions: Option<&Vec<String>>) -> Vec<ModConflict> {
@@ -19,6 +19,7 @@ impl ModConflict {
         let mut conflicts: HashMap<String,ModConflict> = HashMap::new();
 
         for mod_info in mod_list {
+            if mod_info.get_active() {
             for file_path in mod_info.get_filetree() {
                 let mut file_path = file_path.to_string();
                 file_path.make_ascii_lowercase();
@@ -44,6 +45,7 @@ impl ModConflict {
                     conflicts.insert(file_path, conf);
                 }
             }
+        }
         }
 
         for conf in conflicts {

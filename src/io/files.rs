@@ -3,13 +3,9 @@ use crate::io::re;
 
 use std::path::{PathBuf,Path};
 use std::fs::{self,File};
-use std::io::{prelude::*,BufReader,Error};
+use std::io::{prelude::*};
 use std::collections::HashMap;
 use regex::Regex;
-
-fn paths_to_pathbuf(paths: &[&Path]) -> PathBuf {
-    paths.iter().collect()
-}
 
 pub fn fetch_file_in_path(file_path: &Path, decode: bool, normalize: bool) -> Option<String> {
     let file = File::open(file_path);
@@ -102,6 +98,39 @@ pub fn walk_in_dir(dir: &Path, relative: Option<&Path>) -> Vec<PathBuf> {
     }
 }
 
+pub fn list_files_in_dir(dir: &Path, extensions: &[&Path], relative: bool) -> Vec<PathBuf> {
+    let mut results = Vec::new();
+    if dir.is_dir() {
+        let dirs = match fs::read_dir(dir) {
+            Ok(s) => s,
+            Err(e) => {eprintln!("{}",e); return results},
+        };
+        for entry in dirs {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let path = entry.path();
+            if let Some(ext) = path.extension() {
+                if extensions.is_empty() || extensions.iter().any(|ext1| ext1 == ext) {
+                    if relative {
+                        let new_path = match path.strip_prefix(dir) {
+                            Ok(p) => p,
+                            Err(_) => &path,
+                        };
+                        results.push(new_path.to_path_buf());
+                    } else {
+                        results.push(path);
+                    }
+                }
+            } else {
+                continue;
+            }
+        }
+    }
+    results
+}
+
 pub fn relative_folder_path(mod_folder: &Path, path: &Path) -> Result<PathBuf,std::io::Error> {
     let current_dir = std::env::current_dir()?;
     let mod_folder = Path::new(&mod_folder);
@@ -109,6 +138,7 @@ pub fn relative_folder_path(mod_folder: &Path, path: &Path) -> Result<PathBuf,st
     Ok(full_path)
 }
 
+#[allow(dead_code)]
 pub fn fetch_file_in_relative_path(path_base: &Path, rel_path: &Path) -> Option<String> {
     let full_path: PathBuf = path_base.join(rel_path);
     fetch_file_in_path(&full_path,false,false)
@@ -152,25 +182,25 @@ pub fn write_file_with_content(file_path: &Path, file_content: &[u8]) -> Result<
     Ok(())
 }
 
-pub fn write_file_with_string(file_path: &Path, file_content: String, encode: bool) -> Result<(),std::io::Error> {
+pub fn write_file_with_string<P: AsRef<Path>>(file_path: P, file_content: String, encode: bool) -> Result<(),std::io::Error> {
     let content = if encode {
         encodings::encode_latin1(file_content)
     } else {
         Some(file_content.as_bytes().to_vec())
     };
     match content {
-        Some(bytes) => write_file_with_content(file_path, &bytes),
+        Some(bytes) => write_file_with_content(file_path.as_ref(), &bytes),
         None => Err(std::io::Error::from_raw_os_error(126)),
     }
 }
 
-pub fn copy_directory_tree(source_dir: &Path, result_dir: &Path, overwrite: bool, ignore_direct: bool) -> Result<(),std::io::Error> {
+pub fn copy_directory_tree<P: AsRef<Path>>(source_dir: P, result_dir: P, overwrite: bool, _ignore_direct: bool) -> Result<(),std::io::Error> {
     //let from_files_abs = walk_in_dir(source_dir, None);
-    let from_files_rel = walk_in_dir(source_dir, Some(source_dir));
+    let from_files_rel = walk_in_dir(source_dir.as_ref(), Some(source_dir.as_ref()));
 
     for file in from_files_rel {
-        let from_abs_path = source_dir.join(&file);
-        let to_abs_path = result_dir.join(file);
+        let from_abs_path = source_dir.as_ref().join(&file);
+        let to_abs_path = result_dir.as_ref().join(file);
 
         if !overwrite || !to_abs_path.exists() {
             fs::copy(from_abs_path,to_abs_path)?;
@@ -191,11 +221,19 @@ pub fn copy_directory_tree(source_dir: &Path, result_dir: &Path, overwrite: bool
 /// 
 /// * `all_matches` - if true, return all matches, otherwise only return the first match
 /// 
-pub fn fgrep(file_path: &Path, reg: &Regex, all_matches: bool) -> Vec<String> {
-    if let Some(input) = fetch_file_in_path(file_path,true,true) {
+pub fn fgrep<P: AsRef<Path>>(file_path: P, reg: &Regex, all_matches: bool) -> Vec<String> {
+    if let Some(input) = fetch_file_in_path(file_path.as_ref(),true,true) {
         return re::grep(&input,reg,all_matches);
     }
-    eprintln!("Failed to open file.\t{}",file_path.display());
+    eprintln!("Failed to open file.\t{}",file_path.as_ref().display());
     
     Vec::new()
+}
+
+pub fn join_unless_absolute<P: AsRef<Path>>(path_1: P, path_2: P) -> PathBuf {
+    if path_2.as_ref().is_absolute() {
+        path_2.as_ref().to_path_buf()
+    } else {
+        path_1.as_ref().join(path_2)
+    }
 }

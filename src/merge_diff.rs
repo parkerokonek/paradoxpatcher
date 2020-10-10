@@ -1,4 +1,4 @@
-use diff_match_patch::{Dmp,Diff,Patch};
+use diff_match_patch::{Dmp,Diff};
 use std::collections::HashMap;
 // Use these to configure the diff match patch engine
 // I am having to just do trial and error until they maximize test passes
@@ -6,9 +6,9 @@ use std::collections::HashMap;
 // Use this for maximum allowed change on finding a patch
 static MATCH_THRESHOLD: f32 = 0.22;//0.22;
 // Use this for maximum allowed change on either side of a deleted set of chars
-static DELETE_THRESHOLD: f32 = 0.0;
+//static DELETE_THRESHOLD: f32 = 0.0;
 // Maximum patch length allowed
-static MATCH_DIST: i32 = 500;
+//static MATCH_DIST: i32 = 500;
 // Maximum size of a single patch
 static MATCH_BITS: i32 = 16;
 
@@ -110,7 +110,7 @@ fn patch_nway(source_text: &str, diffs: &mut Vec<Vec<Diff>>) -> Option<String> {
     Some(result_text)
 }
 
-pub fn diff_single_conflict(base_text: &str, modded_texts: &[String], verbose: bool) -> Option<String> {
+pub fn diff_single_conflict(base_text: &str, modded_texts: &[String], _verbose: bool) -> Option<String> {
     let (character_map,mut diffs,encoded_base) = diff_linemode_nway(base_text, modded_texts);
     let encoded_patched = patch_nway(&encoded_base, &mut diffs)?;
     // Now decode
@@ -190,7 +190,7 @@ mod test {
         // Result should be a failure
         assert_eq!(diff_single_conflict(&source,&[source_a.clone(),source_o.clone()],false),None, "Conflicting entries on a line, even by a single character, should not produce output text.");
         // Result should not depend on patch order if it will fail
-        assert_eq!(diff_single_conflict(&source,&[source_a.clone(),source_o.clone()],false),diff_single_conflict(&source,&[source_o.clone(),source_a.clone()],false),"Result changes based off of the order of the changed files.");
+        assert_eq!(diff_single_conflict(&source,&[source_a.clone(),source_o.clone()],false),diff_single_conflict(&source,&[source_o,source_a],false),"Result changes based off of the order of the changed files.");
     }
 
     #[test]

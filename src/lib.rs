@@ -3,11 +3,11 @@ mod merge_diff;
 mod io;
 pub mod configs;
 
-pub use moddata::{mod_info::ModInfo,mod_pack::ModPack};
+pub use moddata::{mod_info::ModInfo,mod_pack::ModPack,mod_pack::ModStatus,mod_pack::ModToken};
 
 use std::path::{PathBuf,Path};
 use std::fs::{self,File};
-use std::io::{prelude::*,BufReader};
+use std::io::{BufReader};
 use std::collections::HashMap;
 
 use lazy_static::lazy_static;
@@ -58,9 +58,9 @@ fn collect_dependencies(mod_path: &Path) -> Vec<String> {
 /// 
 /// * `mod_file` - mod descriptor file name and extension
 fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
-        let modmod_path: PathBuf = [mod_path,mod_file].iter().collect();
+        let modmod_path: PathBuf = mod_path.join(mod_file);
         let dependencies = collect_dependencies(&modmod_path);
-        
+
         let modmod_content = files::fetch_file_in_path(&modmod_path,true,true).unwrap_or_default();
         
         let archive: Vec<String> = re::grep(&modmod_content, &RE_ARCHIVE, false).iter().map(|x| re::trim_quotes(x) ).collect();
@@ -73,9 +73,10 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
         
         if archive.is_empty() && path.is_empty() || !archive.is_empty() && !path.is_empty() {
             eprintln!("{}\n Spaghetti-Os: {} {}", &modmod_path.display(), archive.is_empty(), path.is_empty());
-            return None;
+            None
         } else if name.len() == 1 && archive.len() == 1 {
-            let zip_path: PathBuf = [mod_path.to_str()?,&archive[0]].iter().collect();
+            let zip_path: PathBuf = mod_path.join(&archive[0]);
+
             let zip_path = files::find_even_with_case(&zip_path)?;
             let file = match File::open(&zip_path) {
                 Ok(f) => f,
@@ -89,68 +90,140 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
             
             let files: Vec<&str> = zipfile.file_names().collect();
             
-            return Some(ModInfo::new(mod_path.to_path_buf(),&files,zip_path,name[0].clone(),&dependencies,&replace_paths,user_dir));
+            Some(ModInfo::new(mod_file.to_path_buf(),&files,zip_path,name[0].clone(),&dependencies,&replace_paths,user_dir,true))
         } else if name.len() == 1 && path.len() == 1 {
-            let dir_path: PathBuf = [mod_path.to_str()?,&path[0]].iter().collect();
+            let dir_path: PathBuf = mod_path.join(&path[0]);
             let dir_path = files::find_even_with_case(&dir_path)?;
-            
             let file_check = files::walk_in_dir(&dir_path,Some(&dir_path));
             let files_ref: Vec<&str> = file_check.iter().map(|x| x.to_str().unwrap_or_default()).collect();
-            return Some(ModInfo::new(mod_path.to_path_buf(),&files_ref,dir_path,name[0].clone(),&dependencies,&replace_paths,user_dir));
+            Some(ModInfo::new(mod_file.to_path_buf(),&files_ref,dir_path,name[0].clone(),&dependencies,&replace_paths,user_dir,true))
+        } else {
+            None
         }
-        
-        None
 }
 
 /// Given the path to a paradox game's user directory, generate a list of all enabled mods and their metadata
 /// #Arguments
 /// 
 /// * `path` - Path of the game's user directory, typically in Documents or ~/.Paradox\ Interactive/
-pub fn generate_mod_list(path: &Path, new_launcher: bool) -> Vec<ModInfo> {
-    if !new_launcher {
-        let settings = path.join("settings.txt");
-        let enabled_mods = files::fgrep(&settings,&RE_MOD,true);
-        if enabled_mods.is_empty() {
-            eprintln!("Had an issue reading the settings file.");
-            return Vec::new();
+pub fn generate_enabled_mod_list(path: &Path, new_launcher: bool) -> Vec<ModInfo> {
+    let enabled_mods = list_enabled_mods(path,new_launcher);
+    let mut mods = Vec::new();
+    
+    for i in enabled_mods {
+        let mod_file = PathBuf::from(i);
+        let smod = generate_single_mod(&path,&mod_file);
+        if let Some(good_mod) = smod {
+            mods.push(good_mod);
+        } else {
+            eprintln!("The following mod failed to load:\t{}",mod_file.display());
         }
-        let mut mods = Vec::new();
-        for i in enabled_mods {
-            let mod_file: PathBuf = PathBuf::from(re::trim_quotes(&i));
-            let smod = generate_single_mod(&path,&mod_file);
-            if let Some(good_mod) = smod {
-                mods.push(good_mod);
-            } else {
-                eprintln!("The following mod failed to load:\t{}",mod_file.display());
+    }
+
+    mods
+}
+
+/// Generate a list of all mods, enabled or not
+pub fn generate_entire_mod_list(path: &Path, new_launcher: bool) -> Vec<ModInfo> {
+    let mut mod_list: Vec<ModInfo> = Vec::new();
+    let mod_ext = PathBuf::from("mod");
+    let mod_mod_ext = PathBuf::from("mod.mod");
+    let enabled_mods: Vec<String> = list_enabled_mods(path, new_launcher);
+
+    let mods_path = path.join("mod");
+    let s_mod_path = PathBuf::from(path);
+
+    for mod_file in files::list_files_in_dir(&mods_path,&[&mod_ext,&mod_mod_ext],true) {
+        let mod_mod = PathBuf::from("mod");
+        let mod_file = mod_mod.join(mod_file);
+        let s_mod = generate_single_mod(&s_mod_path, &mod_file);
+        if let Some(good_mod) = s_mod {
+
+            let enabled = enabled_mods.iter().any(|file| mod_file == PathBuf::from(file.as_str()));
+            mod_list.push(good_mod.with_active_state(enabled));
+        } else {
+            eprintln!("The following mod failed to load:\t{}",mod_file.display());
+        }
+    }
+
+    mod_list
+}
+
+pub fn set_entire_mod_list(path: &Path, new_launcher: bool, mod_list: &[ModStatus]) -> Result<(),Box<dyn std::error::Error>> {
+    if new_launcher {
+        println!("New Launcher");
+    } else {
+        let settings = path.join("settings.txt");
+        let old_settings_str = match files::fetch_file_in_path(&settings, false, true) {
+            Some(s) => s,
+            None => {
+                eprintln!("Had an issue finding and reading the settings file.");
+                return Ok(());
+            },
+        };
+
+        let mod_list = mod_list.iter().filter(|item| item.status() ).map(|item| item.mod_file() );
+
+        let chunks: Vec<_> = old_settings_str.splitn(2,"last_mods=\r\n{").collect();
+        if chunks.len() != 2 {
+            eprintln!("Wrong number of chunks");
+            return Ok(());
+        }
+
+        let chunks_boogaloo: Vec<_> = chunks[1].splitn(2,"}\r\n").collect();
+
+        if chunks_boogaloo.len() != 2 {
+            eprintln!("Wrong number of boogaloo chunks");
+            return Ok(());
+        }
+
+        let mut output: String = chunks[0].to_string();
+        output.push_str("last_mods=\r\n{\r\n");
+
+        for item in mod_list {
+            if let Some(s) = item.to_str() {
+                output.push('"');
+                output.push_str(&s);
+                output.push_str("\"\r\n");
             }
         }
-        mods
-    } else {
+
+        output.push_str("}\r\n");
+        output.push_str(chunks_boogaloo[1]);
+
+        let res = files::write_file_with_string(&settings, output, false)?;
+
+    }
+return Ok(())
+}
+
+fn list_enabled_mods(path: &Path, new_launcher: bool) -> Vec<String> {
+    if new_launcher {
         let settings = path.join("dlc_load.json");
-        let mut mods = Vec::new();
 
         let all_mods_str = match files::fetch_file_in_path(&settings, false, false) {
             Some(s) => s,
-            None => {eprintln!("Had an issue finding and reading the settings file."); return mods},
+            None => {eprintln!("Had an issue finding and reading the settings file."); return Vec::new()},
         };
         let all_mods: HashMap<String,Vec<String>> = match serde_json::from_str(&all_mods_str) {
             Ok(val) => val,
-            Err(e) => {eprintln!("{:?}",e); return mods},
+            Err(e) => {eprintln!("{:?}",e); return Vec::new()},
         };
 
-        if let Some(enabled_mods) = all_mods.get("enabled_mods"){
-            for mod_entry in enabled_mods {
-                let mod_file = PathBuf::from(mod_entry);
-                let s_mod = generate_single_mod(&path, &mod_file);
-                if let Some(good_mod) = s_mod {
-                    mods.push(good_mod);
-                } else {
-                    eprintln!("The following mod failed to load:\t{}",mod_file.display());
-                }
-            }
+        match all_mods.get("enabled_mods") {
+            Some(enabled) => enabled.clone(),
+            None => Vec::new(),
         }
+    } else {
+        let settings = path.join("settings.txt");
+        let enabled_mods = files::fgrep(&settings,&RE_MOD,true);
 
-        mods
+        if enabled_mods.is_empty() {
+            eprintln!("Had an issue reading the settings file.");
+            Vec::new()
+        } else {
+            enabled_mods.iter().map(|s| re::trim_quotes(s)).collect()
+        }
     }
 }
 
@@ -290,7 +363,7 @@ fn current_dir_path(_args: &ArgOptions, path: &Path) -> Result<PathBuf,std::io::
 /// * `path` - relative file path in the parent directory
 /// 
 /// * `encode` - if yes, encode in WINDOWS-1252, otherwise write as-is
-fn write_to_mod_folder(mod_folder: &Path, contents: &[u8], path: &Path, encode: bool) -> Result<(),std::io::Error> {
+fn write_to_mod_folder(mod_folder: &Path, contents: &[u8], path: &Path, _encode: bool) -> Result<(),std::io::Error> {
     let full_path = files::relative_folder_path(mod_folder, &path)?;
     files::write_file_with_content(&full_path, contents)
 }
@@ -366,7 +439,7 @@ pub fn write_mod_desc_to_folder(args: &ArgOptions, mod_pack: &ModPack) -> Result
     // Write Dependencies into the file
     file_contents.push_str("dependencies = {\n");
     for dep in mod_pack.load_order() {
-        let dep_text = format!("\"\\\"{}\\\"\"\n",dep);
+        let dep_text = format!("\"\\\"{}\\\"\"\n",dep.name());
         file_contents.push_str(&dep_text);
     }
     file_contents.push_str("}\n");
@@ -474,17 +547,18 @@ fn vanilla_fetch(dir: &Path, config: &ConfigOptions, decode: bool, normalize: bo
 /// * `config` - information about the game files
 /// 
 /// * `to_zip` - if yes, compress output to zip file, uses a lot of memory as all data is written to disk at once
-pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, config: &ConfigOptions, to_zip: bool) {
-    let mod_folder = args.folder_name();
-    let mod_folder = Path::new(&mod_folder);
+pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, _config: &ConfigOptions, to_zip: bool, destination: &Path) {
+    let mod_folder_buf = destination.join(args.folder_name());
+    let mod_folder = mod_folder_buf.as_path();
     if to_zip {
         let zip_target = args.folder_name();
         let zip_target: PathBuf = [&zip_target,".zip"].iter().collect();
         let mut staged_zip_data = HashMap::new();
         for mod_idx in mods.load_order() {
-            let mod_info = match mods.get_mod(mod_idx) {
+            if mod_idx.status() {
+            let mod_info = match mods.get_mod(mod_idx.name()) {
                 Some(m) => m,
-                None => {eprintln!("Error looking up previously registered mod: {}", mod_idx); continue},
+                None => {eprintln!("Error looking up previously registered mod: {}", mod_idx.name()); continue},
             };
                 if mod_info.is_zip() {
                     let files = mod_zip_fetch_all(&mod_info);
@@ -497,26 +571,29 @@ pub fn extract_all_files(mods: &ModPack, args: &ArgOptions, config: &ConfigOptio
                         let _old_data = staged_zip_data.insert(file_path, file_data);
                     }
                 }
+            }
         }
-        let result = write_to_mod_zip(mod_folder, staged_zip_data, &zip_target);
+        let _result = write_to_mod_zip(mod_folder, staged_zip_data, &zip_target);
     } else {
         for mod_idx in mods.load_order() {
-            let mod_info = match mods.get_mod(mod_idx) {
+            if mod_idx.status() {
+            let mod_info = match mods.get_mod(mod_idx.name()) {
                 Some(m) => m,
-                None => {eprintln!("Error looking up previously registered mod: {}", mod_idx); continue},
+                None => {eprintln!("Error looking up previously registered mod: {}", mod_idx.name()); continue},
             };
                 if mod_info.is_zip() {
                     let files = mod_zip_fetch_all(&mod_info);
                     for (file_path,file_data) in files {
-                        let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
+                        let _result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
                     }
                 } else {
-                    let res = files::copy_directory_tree(&mod_info.get_data_path() , mod_folder, true, true);
+                    let _res = files::copy_directory_tree(&mod_info.get_data_path() , &mod_folder, true, true);
                     //let files = mod_path_fetch_all(&mod_info);
                     //for (file_path,file_data) in files {
                     //    let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
                     //}
                 }
         }
+    }
     }
 }

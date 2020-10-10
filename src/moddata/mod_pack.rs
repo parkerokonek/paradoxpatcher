@@ -1,9 +1,12 @@
 use std::path::{Path,PathBuf};
-use std::collections::{HashSet,HashMap};
+use std::collections::{HashMap};
+
+use fxhash::hash64;
 
 use super::mod_info::ModInfo;
 use super::mod_conflict::ModConflict;
 
+#[derive(Clone,Debug)]
 pub struct ModPack {
     mod_list: Vec<ModInfo>,
     conflicts: Vec<ModConflict>,
@@ -12,11 +15,44 @@ pub struct ModPack {
     conflict_lookup: HashMap<String,usize>,
     valid_paths: Vec<PathBuf>,
     valid_extensions: Vec<String>,
+    noncrypto_hash: u64,
+}
+
+#[derive(Clone,Debug)]
+pub struct ModStatus {
+    active: bool,
+    mod_name: String,
+    special_number: ModToken,
+    file_path: PathBuf,
+}
+
+#[derive(Clone,Copy,Debug)]
+pub struct ModToken{
+    idx: usize,
+    valid_hash: u64,
+}
+
+impl ModStatus {
+    pub fn name(&self) -> &str {
+        &self.mod_name
+    }
+
+    pub fn status(&self) -> bool {
+        self.active
+    }
+
+    pub fn special_number(&self) -> ModToken {
+        self.special_number
+    }
+
+    pub fn mod_file(&self) -> &Path {
+        &self.file_path
+    }
 }
 
 impl ModPack {
-    pub fn new() -> Self {
-        ModPack{mod_list: Vec::new(),conflicts: Vec::new(), in_vanilla: Vec::new(),mod_lookup: HashMap::new(), conflict_lookup: HashMap::new(), valid_paths: Vec::new(), valid_extensions: Vec::new()}
+    pub fn default() -> Self {
+        ModPack{mod_list: Vec::new(),conflicts: Vec::new(), in_vanilla: Vec::new(),mod_lookup: HashMap::new(), conflict_lookup: HashMap::new(), valid_paths: Vec::new(), valid_extensions: Vec::new(), noncrypto_hash: hash64(&String::new())}
     }
 
     pub fn restrict_paths(mut self, valid_paths: &[PathBuf]) -> Self {
@@ -60,6 +96,7 @@ impl ModPack {
                     }
                 }
             }
+            self.update_hash_fast();
         }
     }
 
@@ -132,20 +169,42 @@ impl ModPack {
         &self.conflicts
     }
 
-    pub fn load_order(&self) -> Vec<&str> {
+    pub fn load_order(&self) -> Vec<ModStatus> {
         let mut out = Vec::new();
-        for file in &self.mod_list {
-            out.push(file.get_name());
+        for (idx,file) in self.mod_list.iter().enumerate() {
+            out.push(ModStatus{active: file.get_active(), mod_name: file.get_name().to_string(), special_number: ModToken {idx,valid_hash: self.noncrypto_hash }, file_path: PathBuf::from(file.get_mod_path()) });
         }
         out
     }
 
     pub fn get_mod(&self, name: &str) -> Option<&ModInfo> {
-        let id = self.mod_lookup.get(name);
-        if let Some(real_id) = id  {
-            Some(&self.mod_list[*real_id])
-        } else {
+        match self.mod_lookup.get(name) {
+            Some(real_id) => Some(&self.mod_list[*real_id]),
+            None => None,
+        }
+    }
+
+    pub fn get_mod_token(&self, name: &str) -> Option<ModToken> {
+        None
+    }
+
+    pub fn toggle_by_name(&mut self, name: &str) -> Option<bool> {
+        let our_mod = match self.mod_lookup.get(name) {
+            None => return None,
+            Some(real) => real,
+        };
+        let old = &self.mod_list[*our_mod].get_active();
+        self.mod_list[*our_mod].toggle();
+        Some(*old)
+    }
+
+    pub fn toggle_by_token(&mut self, token: ModToken) -> Option<bool> {
+        if token.valid_hash != self.noncrypto_hash {
             None
+        } else {
+            let old = &self.mod_list[token.idx].get_active();
+            self.mod_list[token.idx].toggle();
+            Some(*old)
         }
     }
 
@@ -173,6 +232,15 @@ impl ModPack {
             }
         }
         user_dirs
+    }
+
+    fn update_hash_fast(&mut self) {
+        let mut hashee = String::new();
+        for (game_id,number) in &self.mod_lookup {
+            hashee.push_str(&game_id);
+            hashee.push_str(&number.to_string());
+        }
+        self.noncrypto_hash = hash64(&hashee);
     }
 }
 

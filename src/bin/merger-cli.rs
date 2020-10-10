@@ -1,7 +1,8 @@
-use paradoxmerger::{ModInfo,ModPack,generate_mod_list,files_in_vanilla,extract_all_files,auto_merge,write_mod_desc_to_folder};
+use paradoxmerger::{ModInfo,ModPack,generate_enabled_mod_list,files_in_vanilla,extract_all_files,auto_merge,write_mod_desc_to_folder};
 use paradoxmerger::configs::{ArgOptions,parse_user_config,fetch_user_configs};
 
 use std::path::{PathBuf,Path};
+use std::env::current_dir;
 use clap::{Arg,App};
 
 
@@ -9,8 +10,8 @@ fn main() {
     let args = parse_args();
     let config = parse_user_config(&args,true).expect("Couldn't read configuration file");
     
-    let mut mod_pack = ModPack::new().restrict_paths(&config.valid_paths).restrict_extensions(&config.valid_extensions);
-    let mod_list: Vec<ModInfo> = generate_mod_list(&config.mod_path,config.new_launcher);
+    let mut mod_pack = ModPack::default().restrict_paths(&config.valid_paths).restrict_extensions(&config.valid_extensions);
+    let mod_list: Vec<ModInfo> = generate_enabled_mod_list(&config.mod_path,config.new_launcher);
     let vanilla = files_in_vanilla(&config);
     let val_ref: Vec<&Path> = vanilla.iter().map(|x| x.as_path()).collect();
     mod_pack.register_vanilla(&val_ref);
@@ -20,7 +21,8 @@ fn main() {
     if !args.dry_run {
         if args.extract{
             println!("Extracting all files, this could take some time.");
-            extract_all_files(&mod_pack, &args, &config, false);
+            let cur_dir = current_dir().unwrap_or_default();
+            extract_all_files(&mod_pack, &args, &config, false, &cur_dir);
         }
 
         let aout = auto_merge(&config, &args , &mod_pack);
