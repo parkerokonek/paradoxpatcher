@@ -21,18 +21,23 @@ cargo build --release --features command-line --bin merger-cli
 ```
 ### GUI Interface
 Requires the GTK-3 dev libraries for your OS or distribution.
+
 On Arch:
+
 ```
 # pacman -S gtk3
 ```
 On Ubuntu:
+
 ```
 # apt install libgtk-3-dev
 ```
 On Windows:
+
 Install the gtk3 libraries using [MSYS2](https://www.msys2.org/)
 
 After installing the dependencies run cargo using the following flags.
+
 and then build using:
 ```
 cargo build --release --features gui-interface --bin merger-gui
