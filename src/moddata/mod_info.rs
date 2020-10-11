@@ -13,8 +13,28 @@ pub struct ModInfo {
     enabled: bool,
 }
 
+pub struct ModBuilder {
+    mod_info: ModInfo
+}
+
+impl Default for ModInfo {
+    fn default() -> Self {
+        ModInfo {
+            mod_path: PathBuf::new(),
+            file_tree: HashSet::new(),
+            data_path: PathBuf::new(),
+            name: String::new(),
+            dependencies: Vec::new(),
+            replacement_paths: Vec::new(),
+            user_dir: None,
+            enabled: false,
+        }
+    }
+}
+
 impl ModInfo {
-    pub fn new(mod_path: PathBuf, file_list: &[&str], data_path: PathBuf, name: String, dependencies: &[String], replacement_paths: &[PathBuf], user_dir: Option<String>, enabled: bool) -> ModInfo {
+
+    fn new(mod_path: PathBuf, file_list: &[&str], data_path: PathBuf, name: String, dependencies: &[String], replacement_paths: &[PathBuf], user_dir: Option<String>, enabled: bool) -> ModInfo {
         let file_tree = ModInfo::list_to_tree(file_list);
         ModInfo {mod_path,file_tree,data_path,name,dependencies: dependencies.to_vec(),replacement_paths: replacement_paths.to_vec(), user_dir, enabled}
     }
@@ -91,5 +111,67 @@ impl ModInfo {
         let mut new_info = self;
         new_info.enabled = enabled;
         new_info
+    }
+}
+
+impl ModBuilder {
+    pub fn new() -> Self {
+        ModBuilder {mod_info: ModInfo::default()}
+    }
+
+    pub fn with_name(mut self, name: String) -> Self {
+        self.mod_info.name = name;
+        self
+    }
+
+    pub fn file_list(mut self, file_list: &[&str]) -> Self {
+        let file_tree = ModInfo::list_to_tree(file_list);
+        self.mod_info.file_tree = file_tree;
+        self
+    }
+
+    pub fn enabled(mut self) -> Self {
+        self.mod_info.enabled = true;
+        self
+    }
+
+    pub fn disabled(mut self) -> Self {
+        self.mod_info.enabled = false;
+        self
+    }
+
+    pub fn with_dependencies(mut self, dependencies: &[String]) -> Self {
+        self.mod_info.dependencies = dependencies.to_vec();
+        self
+    }
+
+    pub fn replace_paths(mut self, replacements: &[PathBuf]) -> Self {
+        self.mod_info.replacement_paths = replacements.to_vec();
+        self
+    }
+
+    pub fn with_user_directory(mut self, user_dir: &str) -> Self {
+        self.mod_info.user_dir = Some(user_dir.to_owned());
+        self
+    }
+
+    pub fn with_mod_path(mut self, path: PathBuf) -> Self {
+        self.mod_info.mod_path = path;
+        self
+    }
+
+    pub fn with_data_path(mut self, path: PathBuf) -> Self {
+        self.mod_info.data_path = path;
+        self
+    }
+
+    pub fn finish(&self) -> ModInfo {
+        self.mod_info.clone()
+    }
+}
+
+impl From<ModBuilder> for ModInfo {
+    fn from(mod_builder: ModBuilder) -> Self {
+        mod_builder.mod_info
     }
 }

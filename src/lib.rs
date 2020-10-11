@@ -3,7 +3,17 @@ mod merge_diff;
 mod io;
 pub mod configs;
 
-pub use moddata::{mod_info::ModInfo,mod_pack::ModPack,mod_pack::ModStatus,mod_pack::ModToken};
+pub use moddata::{
+    mod_info::{
+        ModInfo,
+        ModBuilder
+    },
+    mod_pack::{
+        ModPack,
+        ModStatus,
+        ModToken
+    }
+};
 
 use std::path::{PathBuf,Path};
 use std::fs::{self,File};
@@ -62,43 +72,77 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
         let dependencies = collect_dependencies(&modmod_path);
 
         let modmod_content = files::fetch_file_in_path(&modmod_path,true,true).unwrap_or_default();
-        
-        let archive: Vec<String> = re::grep(&modmod_content, &RE_ARCHIVE, false).iter().map(|x| re::trim_quotes(x) ).collect();
-        let path: Vec<String> = re::grep(&modmod_content, &RE_PATHS, false).iter().map(|x| re::trim_quotes(x)).collect();
-        let name: Vec<String> = re::grep(&modmod_content, &RE_NAMES, false).iter().map(|x| re::trim_quotes(x)).collect();
-        let replace_paths: Vec<PathBuf> = re::grep(&modmod_content, &RE_REPLACE, true).iter().map(|x| PathBuf::from(re::trim_quotes(x))).collect();
-        let user_dir: Option<String> = re::grep(&modmod_content, &RE_USER_DIR, false).iter().map(|x| re::trim_quotes(x)).next();
-        
-        //let path: Vec<String> = path.into_iter().filter(|x| !&replace_paths.contains(&PathBuf::from(&x))).collect();
-        
-        if archive.is_empty() && path.is_empty() || !archive.is_empty() && !path.is_empty() {
-            eprintln!("{}\n Spaghetti-Os: {} {}", &modmod_path.display(), archive.is_empty(), path.is_empty());
-            None
-        } else if name.len() == 1 && archive.len() == 1 {
-            let zip_path: PathBuf = mod_path.join(&archive[0]);
 
-            let zip_path = files::find_even_with_case(&zip_path)?;
-            let file = match File::open(&zip_path) {
+        let grep_strings = |regex, multiple_res| -> Vec<String> {
+            re::grep(&modmod_content, regex, multiple_res).iter().map(|x| re::trim_quotes(x)).collect()
+        };
+        let grep_paths = |regex, multiple_res| -> Vec<PathBuf> {
+            re::grep(&modmod_content, regex, multiple_res).iter().map(|x| PathBuf::from(re::trim_quotes(x))).collect()
+        };
+
+        /* Rust devs pls let me do this T_T
+        let grep_mod_content<T> = |regex: &Regex, match_multiple: bool, closure: &dyn Fn(String) -> T| -> Vec<T> {
+            re::grep(&modmod_content,regex,match_multiple).iter().map(closure).collect()
+        };
+
+        let clean_string = |s| re::trim_quotes(s);
+        let clean_path = |p| PathBuf::from(re::trim_quotes(p));
+        
+        */
+
+        let archive: Vec<String> = grep_strings(&RE_ARCHIVE,false);
+        let path: Vec<String> = grep_strings(&RE_PATHS, false);
+        let name: Vec<String> = grep_strings(&RE_NAMES, false);
+        let replace_paths: Vec<PathBuf> = grep_paths(&RE_REPLACE, true);
+        let user_dir: Option<String> = grep_strings(&RE_USER_DIR, false).pop();
+
+        let mod_name: String = match name.get(0) {
+            Some(m_name) if name.len() == 1 => m_name.clone(),
+            _ => return None,
+        };
+
+        let (is_archive, mod_data_path): (bool,String) = match (archive.into_iter().next(), path.into_iter().next()) {
+            (Some(m_archive), None) => (true, m_archive),
+            (None,Some(m_path)) => (false, m_path),
+            _ => return None,
+        };
+
+        let data_path = mod_path.join(&mod_data_path);
+        let data_path = files::find_even_with_case(&data_path)?;
+
+        let mod_builder = match user_dir {
+            Some(u_dir) => ModBuilder::new().with_user_directory(&u_dir),
+            None => ModBuilder::new(),
+        };
+
+        let mod_builder = mod_builder
+                .with_mod_path(mod_file.to_path_buf())
+                .with_data_path(data_path.clone())
+                .with_name(mod_name)
+                .with_dependencies(&dependencies)
+                .replace_paths(&replace_paths)
+                .enabled();
+
+        if is_archive {
+            let zip_file = match File::open(&data_path) {
                 Ok(f) => f,
                 Err(e) => {eprintln!("{}",e); return None},
             };
-            let reader = BufReader::new(file);
+
+            let reader = BufReader::new(zip_file);
             let zipfile = match ZipArchive::new(reader) {
                 Ok(z) => z,
                 Err(e) => {eprintln!("{}",e); return None},
             };
-            
+
             let files: Vec<&str> = zipfile.file_names().collect();
-            
-            Some(ModInfo::new(mod_file.to_path_buf(),&files,zip_path,name[0].clone(),&dependencies,&replace_paths,user_dir,true))
-        } else if name.len() == 1 && path.len() == 1 {
-            let dir_path: PathBuf = mod_path.join(&path[0]);
-            let dir_path = files::find_even_with_case(&dir_path)?;
-            let file_check = files::walk_in_dir(&dir_path,Some(&dir_path));
-            let files_ref: Vec<&str> = file_check.iter().map(|x| x.to_str().unwrap_or_default()).collect();
-            Some(ModInfo::new(mod_file.to_path_buf(),&files_ref,dir_path,name[0].clone(),&dependencies,&replace_paths,user_dir,true))
+
+            Some(mod_builder.file_list(&files).into())
         } else {
-            None
+            let file_check = files::walk_in_dir(&data_path,Some(&data_path));
+            let files_ref: Vec<&str> = file_check.iter().map(|x| x.to_str().unwrap_or_default()).collect();
+        
+            Some(mod_builder.file_list(&files_ref).into())
         }
 }
 
