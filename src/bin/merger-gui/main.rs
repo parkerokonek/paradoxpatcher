@@ -10,8 +10,8 @@ use std::path::{PathBuf,Path};
 use vgtk_ext::*;
 use std::env;
 
-use paradoxmerger::configs::{ConfigOptions,fetch_user_configs,ArgOptions};
-use paradoxmerger::{generate_entire_mod_list,ModPack,ModStatus,ModToken,auto_merge,extract_all_files};
+use paradoxmerger::configs::{ConfigOptions,fetch_user_configs};
+use paradoxmerger::{ModMerger,ModPack,ModStatus,ModToken};
 
 const H_PADDING: i32 = 10;
 const V_PADDING: i32 = 20;
@@ -38,11 +38,9 @@ impl Renderable for ModStatus {
 struct Model {
     configs: Vec<ConfigOptions>,
     mod_pack: ModPack,
+    mod_merger: ModMerger,
     config_selected: Option<String>,
-    output_path: PathBuf,
-    extract_all: bool,
     scan_auto: bool,
-    patch_name: String,
 }
 
 impl Default for Model {
@@ -50,11 +48,13 @@ impl Default for Model {
         Self {
             configs: fetch_user_configs(true).unwrap_or(Vec::new()),
             mod_pack: ModPack::default(),
+            mod_merger: ModMerger::new(
+                false,
+                "Merged Patch",
+                &env::current_dir().unwrap_or_default(),
+            ),
             config_selected: None,
-            output_path: env::current_dir().unwrap_or_default(),
-            extract_all: false,
             scan_auto: false,
-            patch_name: String::from("Merged Patch"),
         }
     }
 }
@@ -110,12 +110,12 @@ impl Component for Model {
                 UpdateAction::None
             },
             Message::ToggleExtract => {
-                self.extract_all = !self.extract_all;
+                self.mod_merger.extract_toggle();
                 UpdateAction::None
             },
             Message::ManualScan => {
                 if let Some(config) = &self.get_current_config() {
-                let vanilla = paradoxmerger::files_in_vanilla(&config);
+                let vanilla = ModMerger::files_in_vanilla(&config);
                 let val_ref: Vec<&Path> = vanilla.iter().map(|x| x.as_path()).collect();
                 self.mod_pack.register_vanilla(&val_ref);
             
@@ -124,17 +124,17 @@ impl Component for Model {
                 UpdateAction::None
             },
             Message::SetPatchName(patch_name) => {
-                self.patch_name = patch_name.clone();
+                self.mod_merger.set_patch_name(patch_name.clone());
                 UpdateAction::None
             },
             Message::SetOutputPath(output_path) => {
-                self.output_path = PathBuf::from(output_path);
+                self.mod_merger.set_patch_path(PathBuf::output_path);
                 UpdateAction::None
             },
             Message::SaveLoadOrder => {
                 if let Some(config) = &self.get_current_config() { 
                     let load_order = self.mod_pack.load_order();
-                    let _res = paradoxmerger::set_entire_mod_list(&config.mod_path, config.new_launcher,&load_order);
+                    let _res = ModMerger::set_entire_mod_list(&config.mod_path, config.new_launcher,&load_order);
                 }
                 UpdateAction::None
             },
@@ -142,13 +142,9 @@ impl Component for Model {
                 if let Some(conf_name) = &self.config_selected {
                     let conf = self.configs.iter().find(|c| &c.game_name == conf_name);
                     let conf = match conf {Some(c) => c, _ => return UpdateAction::None};
+                    self.mod_merger.set_config(conf);
 
-                    let args = ArgOptions::new(PathBuf::new(), self.extract_all, false, true, String::new(), self.patch_name.clone());
-
-                    if self.extract_all {
-                        extract_all_files(&self.mod_pack, &args, &conf, false, &self.output_path);
-                    }
-                    let merge_result = auto_merge(conf,&args,&self.mod_pack);
+                    let merge_result = self.mod_merger.merge_and_save();
                     
                     
                     let _res2 = vgtk::run_dialog::<MergeDialog>(vgtk::current_window().as_ref());
@@ -224,22 +220,7 @@ fn list_config_entries(configs: &[ConfigOptions]) -> Vec<(Option<String>,String)
 fn update_mod_pack(selected_idx: String, register_conflicts: bool, configs: &[ConfigOptions]) -> ModPack {
     let conf: Option<&ConfigOptions> = configs.iter().find(|m| m.game_name == selected_idx);
     if let Some(config) = conf {
-        let mod_list = generate_entire_mod_list(&config.mod_path, config.new_launcher);
-        let mut new_pack = ModPack::default()
-            .restrict_paths(&config.valid_paths)
-            .restrict_extensions(&config.valid_extensions);
-
-        if register_conflicts {
-            let vanilla = paradoxmerger::files_in_vanilla(&config);
-            let val_ref: Vec<&Path> = vanilla.iter().map(|x| x.as_path()).collect();
-            new_pack.register_vanilla(&val_ref);
-            
-            new_pack.add_mods(&mod_list, true, true);
-        } else {
-            new_pack.add_mods(&mod_list, false, false);
-        }
-        
-        new_pack
+        ModMerger::new().with_config(&config).mod_pack_from_enabled(register_conflicts).unwrap_or_default()
     } else {
         ModPack::default()
     }

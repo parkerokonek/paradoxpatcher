@@ -34,7 +34,8 @@ pub fn zip_fetch_file_relative(file_path: &Path, zip_archive: &Path, decode: boo
                     return None;
                 }
             }
-            encodings::read_bytes_to_string(output,decode,normalize)
+            //TODO: Bubble up error returns in zip results
+            encodings::read_bytes_to_string(output,decode,normalize).ok()
         } else {
             None
         }

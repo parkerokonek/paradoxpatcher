@@ -33,12 +33,6 @@ impl Default for ModInfo {
 }
 
 impl ModInfo {
-
-    fn new(mod_path: PathBuf, file_list: &[&str], data_path: PathBuf, name: String, dependencies: &[String], replacement_paths: &[PathBuf], user_dir: Option<String>, enabled: bool) -> ModInfo {
-        let file_tree = ModInfo::list_to_tree(file_list);
-        ModInfo {mod_path,file_tree,data_path,name,dependencies: dependencies.to_vec(),replacement_paths: replacement_paths.to_vec(), user_dir, enabled}
-    }
-
     fn list_to_tree(list: &[&str]) -> HashSet<String> {
         let mut set = HashSet::new();
         for item in list {
@@ -48,10 +42,12 @@ impl ModInfo {
         set
     }
 
-    pub fn empty(mod_path: PathBuf, data_path: PathBuf, name: String) -> ModInfo {
-        let dependencies = Vec::new();
-        let replacement_paths = Vec::new();
-        ModInfo{mod_path,file_tree: HashSet::new(),data_path,name,dependencies,replacement_paths,user_dir: None, enabled: false}
+    pub fn new(mod_path: PathBuf, data_path: PathBuf, name: String) -> ModInfo {
+        let mut mod_info: ModInfo = ModInfo::default();
+        mod_info.mod_path = mod_path;
+        mod_info.data_path = data_path;
+        mod_info.name = name;
+        mod_info
     }
 
     pub fn is_zip(&self) -> bool {

@@ -1,5 +1,6 @@
 use crate::io::encodings;
 use crate::io::re;
+use crate::error::MergerError;
 
 use std::path::{PathBuf,Path};
 use std::fs::{self,File};
@@ -7,7 +8,7 @@ use std::io::{prelude::*};
 use std::collections::HashMap;
 use regex::Regex;
 
-pub fn fetch_file_in_path(file_path: &Path, decode: bool, normalize: bool) -> Option<String> {
+pub fn fetch_file_in_path(file_path: &Path, decode: bool, normalize: bool) -> Result<String,MergerError> {
     let file = File::open(file_path);
     if let Ok(file_open) = file {
         let mut contents = Vec::new();
@@ -16,15 +17,16 @@ pub fn fetch_file_in_path(file_path: &Path, decode: bool, normalize: bool) -> Op
                 contents.push(c);
             } else if let Err(e) = byte {
                 eprintln!("{}",e);
-                return None;
+                // TODO: ENCODING ERRORS
+                return Err(MergerError::UnknownError);
             }
         }
         encodings::read_bytes_to_string(contents,decode,normalize)
     } else if let Err(e) = file {
         eprintln!("{}",e);
-        None
+        Err(MergerError::UnknownError)
     } else {
-        None
+        Err(MergerError::UnknownError)
     }
 }
 
@@ -141,7 +143,11 @@ pub fn relative_folder_path(mod_folder: &Path, path: &Path) -> Result<PathBuf,st
 #[allow(dead_code)]
 pub fn fetch_file_in_relative_path(path_base: &Path, rel_path: &Path) -> Option<String> {
     let full_path: PathBuf = path_base.join(rel_path);
-    fetch_file_in_path(&full_path,false,false)
+    // TODO: Untangle spaghetti in relative path returns
+    match fetch_file_in_path(&full_path,false,false) {
+        Ok(s) => Some(s),
+        _ => None,
+    }
 }
 
 pub fn fetch_all_files_in_path(path: &Path) -> HashMap<String,Vec<u8>>{
@@ -222,7 +228,8 @@ pub fn copy_directory_tree<P: AsRef<Path>>(source_dir: P, result_dir: P, overwri
 /// * `all_matches` - if true, return all matches, otherwise only return the first match
 /// 
 pub fn fgrep<P: AsRef<Path>>(file_path: P, reg: &Regex, all_matches: bool) -> Vec<String> {
-    if let Some(input) = fetch_file_in_path(file_path.as_ref(),true,true) {
+    //TODO: Both grep functions should be able to error out
+    if let Ok(input) = fetch_file_in_path(file_path.as_ref(),true,true) {
         return re::grep(&input,reg,all_matches);
     }
     eprintln!("Failed to open file.\t{}",file_path.as_ref().display());
