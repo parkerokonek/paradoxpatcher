@@ -39,6 +39,7 @@ struct Model {
     configs: Vec<ConfigOptions>,
     mod_pack: ModPack,
     mod_merger: ModMerger,
+    gui_settings: 
     config_selected: Option<String>,
     scan_auto: bool,
 }

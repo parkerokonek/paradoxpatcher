@@ -30,6 +30,7 @@ impl SupportedGame {
     }
 }
 
+#[derive(Deserialize,Serialize,Debug,Clone)]
 pub struct MergerSettings {
     pub config_path: PathBuf,
     pub extract: bool,
@@ -59,10 +60,32 @@ impl MergerSettings {
     pub fn new(config_path: PathBuf, extract: bool, dry_run: bool, verbose: bool, game_id: String, patch_name: String) -> Self {
         MergerSettings {config_path,extract,dry_run,verbose,game_id,patch_name}
     }
+
     pub fn folder_name(&self) -> String {
         let mut mod_folder = self.patch_name.clone();
         mod_folder.make_ascii_lowercase();
         mod_folder
+    }
+
+    // TODO: Maybe do some custom error types here
+    pub fn fetch_from_file(path_to_settings: &Path) -> Result<MergerSettings, Box<dyn std::error::Error>> {
+        let settings_file = File::open(path_to_settings)?;
+        let mut contents = String::new();
+        settings_file.read_to_string(&mut contents);
+        let merger_settings: MergerSettings = match toml::from_str(&contents) {
+            Ok(sett) => sett,
+            _ => Default::default(),
+        };
+        
+        Ok(merger_settings)
+    }
+
+    pub fn store_in_file(&self, path_to_settings: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        let settings_file = File::create(path_to_settings)?;
+        // TODO: Okay yeah this does need custom errors
+        let contents = toml::to_string(&self)?;
+
+        settings_file.write_all(contents.as_bytes()).or_else(|e| Err(Box::from(e)))
     }
 }
 
