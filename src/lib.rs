@@ -20,7 +20,7 @@ use error::MergerError;
 
 use std::path::{PathBuf,Path};
 use std::fs::{self,File};
-use std::io::{BufReader};
+use std::io::BufReader;
 use std::collections::HashMap;
 use std::mem;
 
@@ -32,7 +32,7 @@ use zip::read::ZipArchive;
 use merge_diff::diff_single_conflict;
 
 use io::{files,zips,re};
-use configs::{ArgOptions,ConfigOptions};
+use configs::{MergerSettings,ConfigOptions};
 
 
 lazy_static! {
@@ -583,7 +583,8 @@ pub fn merge_and_save(&self, mod_pack: &ModPack) -> Result<u32,error::MergerErro
 /// * `args` - unused command line arguments
 /// 
 /// * `path` - relative path to make absolute
-fn current_dir_path(_args: &ArgOptions, path: &Path) -> Result<PathBuf,std::io::Error> {
+/// //TODO: KILL THIS
+fn current_dir_path(path: &Path) -> Result<PathBuf,std::io::Error> {
     let current_dir = std::env::current_dir()?;
     Ok(current_dir.join(path))
 }
@@ -646,12 +647,12 @@ fn write_to_mod_zip(mod_folder: &Path, staged_data: HashMap<String,Vec<u8>>, zip
 /// 
 /// * `mod_pack` - information on all loaded mods, includes conflicting files, enabled mods, etc.
 
-pub fn write_mod_desc_to_folder(args: &ArgOptions, mod_pack: &ModPack) -> Result<(),std::io::Error> {
+pub fn write_mod_desc_to_folder(args: &MergerSettings, mod_pack: &ModPack) -> Result<(),std::io::Error> {
     let mut mod_file_name = PathBuf::from(args.folder_name());
     mod_file_name.set_extension("mod");
 
     let full_path = if args.dry_run || mod_pack.list_conflicts().is_empty() {
-        ModMerger::current_dir_path(args, &mod_file_name)?
+        ModMerger::current_dir_path(&mod_file_name)?
     } else {
         files::relative_folder_path(Path::new(&args.folder_name()), &mod_file_name)?
     };
@@ -711,7 +712,7 @@ pub fn write_mod_desc_to_folder(args: &ArgOptions, mod_pack: &ModPack) -> Result
 /// * `to_zip` - if yes, compress output to zip file, uses a lot of memory as all data is written to disk at once
 fn extract_all_files(&self, mods: &ModPack, to_zip: bool) {
     //TODO: clean up extract all files
-    let config = self.game_config.as_ref().expect("File extraction failed because the developer called something wrong.");
+    //let config = self.game_config.as_ref().expect("File extraction failed because the developer called something wrong.");
     let destination = &self.patch_path;
     let folder_name = self.patch_name.to_ascii_lowercase();
 

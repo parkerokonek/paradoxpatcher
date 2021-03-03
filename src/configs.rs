@@ -38,6 +38,7 @@ pub struct MergerSettings {
     pub verbose: bool,
     pub game_id: String,
     pub patch_name: String,
+    pub patch_path: String,
 }
 
 impl Default for MergerSettings {
@@ -47,18 +48,19 @@ impl Default for MergerSettings {
         //let _e = fs::create_dir_all(user_path.config_dir())?;
         let config_path = user_path.config_dir().join("merger.toml");
         let patch_name = String::from("Merged Patch");
+        let patch_path = String::from(files::relative_folder_path(Path::new(""),Path::new("")).unwrap_or_default().to_string_lossy());
         let game_id = String::new();
         let extract = false;
         let verbose = false;
         let dry_run = false;
         
-        MergerSettings {config_path, extract, dry_run, verbose, game_id, patch_name}
+        MergerSettings {config_path, extract, dry_run, verbose, game_id, patch_name, patch_path}
     }
 }
 
 impl MergerSettings {
-    pub fn new(config_path: PathBuf, extract: bool, dry_run: bool, verbose: bool, game_id: String, patch_name: String) -> Self {
-        MergerSettings {config_path,extract,dry_run,verbose,game_id,patch_name}
+    pub fn new(config_path: PathBuf, extract: bool, dry_run: bool, verbose: bool, game_id: String, patch_name: String, patch_path: String) -> Self {
+        MergerSettings {config_path,extract,dry_run,verbose,game_id,patch_name,patch_path}
     }
 
     pub fn folder_name(&self) -> String {
@@ -69,7 +71,7 @@ impl MergerSettings {
 
     // TODO: Maybe do some custom error types here
     pub fn fetch_from_file(path_to_settings: &Path) -> Result<MergerSettings, Box<dyn std::error::Error>> {
-        let settings_file = File::open(path_to_settings)?;
+        let mut settings_file = File::open(path_to_settings)?;
         let mut contents = String::new();
         settings_file.read_to_string(&mut contents);
         let merger_settings: MergerSettings = match toml::from_str(&contents) {
@@ -81,11 +83,15 @@ impl MergerSettings {
     }
 
     pub fn store_in_file(&self, path_to_settings: &Path) -> Result<(), Box<dyn std::error::Error>> {
-        let settings_file = File::create(path_to_settings)?;
+        let mut settings_file = File::create(path_to_settings)?;
         // TODO: Okay yeah this does need custom errors
         let contents = toml::to_string(&self)?;
 
-        settings_file.write_all(contents.as_bytes()).or_else(|e| Err(Box::from(e)))
+        settings_file.write_all(contents.as_bytes()).map_err(Box::from)
+    }
+
+    pub fn extract_toggle(&mut self) {
+        self.extract = !self.extract;
     }
 }
 

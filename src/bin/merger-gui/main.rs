@@ -10,7 +10,7 @@ use std::path::{PathBuf,Path};
 use vgtk_ext::*;
 use std::env;
 
-use paradoxmerger::configs::{ConfigOptions,fetch_user_configs};
+use paradoxmerger::configs::{MergerSettings,ConfigOptions};
 use paradoxmerger::{ModMerger,ModPack,ModStatus,ModToken};
 
 const H_PADDING: i32 = 10;
@@ -34,26 +34,30 @@ impl Renderable for ModStatus {
     }
 }
 
+fn default_merger_settings() -> ModMerger {
+    ModMerger::new(
+        false,
+        "Merged Patch",
+        &env::current_dir().unwrap_or_default(),
+    )
+}
+
 #[derive(Clone, Debug)]
 struct Model {
     configs: Vec<ConfigOptions>,
     mod_pack: ModPack,
-    mod_merger: ModMerger,
-    gui_settings: 
+    gui_settings: MergerSettings,
     config_selected: Option<String>,
     scan_auto: bool,
 }
 
 impl Default for Model {
     fn default() -> Self {
+        let settings = MergerSettings::default();
         Self {
-            configs: fetch_user_configs(true).unwrap_or(Vec::new()),
+            configs: ConfigOptions::fetch_user_configs(true).unwrap_or(Vec::new()),
             mod_pack: ModPack::default(),
-            mod_merger: ModMerger::new(
-                false,
-                "Merged Patch",
-                &env::current_dir().unwrap_or_default(),
-            ),
+            gui_settings: settings,
             config_selected: None,
             scan_auto: false,
         }
@@ -101,7 +105,8 @@ impl Component for Model {
             Message::ConfigSelected(s) => {
                 self.config_selected = s.clone();
                 self.mod_pack = match s {
-                    Some(text) => update_mod_pack(text, self.scan_auto, &self.configs),
+                    //TODO: Clean up
+                    Some(text) => update_mod_pack(text, self.scan_auto, &self.configs, &self.gui_settings),
                     None => ModPack::default(),
                 };
                 UpdateAction::Render
@@ -111,7 +116,7 @@ impl Component for Model {
                 UpdateAction::None
             },
             Message::ToggleExtract => {
-                self.mod_merger.extract_toggle();
+                self.gui_settings.extract_toggle();
                 UpdateAction::None
             },
             Message::ManualScan => {
@@ -125,11 +130,11 @@ impl Component for Model {
                 UpdateAction::None
             },
             Message::SetPatchName(patch_name) => {
-                self.mod_merger.set_patch_name(patch_name.clone());
+                self.gui_settings.patch_name = patch_name.clone();
                 UpdateAction::None
             },
             Message::SetOutputPath(output_path) => {
-                self.mod_merger.set_patch_path(PathBuf::output_path);
+                self.gui_settings.patch_path = output_path;
                 UpdateAction::None
             },
             Message::SaveLoadOrder => {
@@ -143,9 +148,11 @@ impl Component for Model {
                 if let Some(conf_name) = &self.config_selected {
                     let conf = self.configs.iter().find(|c| &c.game_name == conf_name);
                     let conf = match conf {Some(c) => c, _ => return UpdateAction::None};
-                    self.mod_merger.set_config(conf);
 
-                    let merge_result = self.mod_merger.merge_and_save();
+                    let mut mod_merger = ModMerger::new(self.gui_settings.extract,&self.gui_settings.patch_name,Path::new(&self.gui_settings.patch_path));
+                    mod_merger.set_config(conf.clone());
+
+                    let merge_result = mod_merger.merge_and_save(&self.mod_pack);
                     
                     
                     let _res2 = vgtk::run_dialog::<MergeDialog>(vgtk::current_window().as_ref());
@@ -185,7 +192,7 @@ impl Component for Model {
                 </Box>
                 <Box spacing=H_PADDING>
                     <Label label="Output Directory:".to_owned() />
-                    <Entry property_width_request=300 text=self.output_path.to_string_lossy().as_ref().clone() on changed=|a| Message::SetOutputPath(gstring_to_string(a.get_text())) />
+                    <Entry property_width_request=300 text=self.gui_settings.patch_path.clone() on changed=|a| Message::SetOutputPath(gstring_to_string(a.get_text())) />
                 </Box>
                 <Box spacing=H_PADDING>
                     <Label label="Extract all files: "/>
@@ -195,7 +202,7 @@ impl Component for Model {
                 </Box>
                 <Box spacing=H_PADDING>
                     <Label label="Output Mod Title:"/>
-                    <Entry property_width_request=200 text=self.patch_name.clone() on changed=|a| Message::SetPatchName(gstring_to_string(a.get_text()))/>
+                    <Entry property_width_request=200 text=self.gui_settings.patch_name.clone() on changed=|a| Message::SetPatchName(gstring_to_string(a.get_text()))/>
                 </Box>
                 <Box spacing=H_PADDING>
                     <Button label="Save Load Order".to_owned() on clicked=|_| Message::SaveLoadOrder />
@@ -218,13 +225,23 @@ fn list_config_entries(configs: &[ConfigOptions]) -> Vec<(Option<String>,String)
     vec
 }
 
-fn update_mod_pack(selected_idx: String, register_conflicts: bool, configs: &[ConfigOptions]) -> ModPack {
+fn update_mod_pack(selected_idx: String, register_conflicts: bool, configs: &[ConfigOptions], gui_settings: &MergerSettings) -> ModPack {
     let conf: Option<&ConfigOptions> = configs.iter().find(|m| m.game_name == selected_idx);
     if let Some(config) = conf {
-        ModMerger::new().with_config(&config).mod_pack_from_enabled(register_conflicts).unwrap_or_default()
+        let mod_merger = ModMerger::new(gui_settings.extract,&gui_settings.patch_name,Path::new(&gui_settings.patch_path));
+        //mod_merger.set_config(*config);
+
+        mod_merger.using_config(config.clone()).mod_pack_from_enabled(register_conflicts).unwrap_or_else(|_| ModPack::default())
     } else {
         ModPack::default()
-    }
+    }/*
+    match conf {
+        Some(config) if let Ok(m) = ModPack::default()
+                                    .with_config(*config)
+                                    .mod_pack_from_enabled(register_conflicts)
+                                     => {m},
+        _ => ModPack::default(),
+    }*/
 }
 
 // Our pop up window to indicate merging has finished.MergeDialog
