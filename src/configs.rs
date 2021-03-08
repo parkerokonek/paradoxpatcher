@@ -73,7 +73,7 @@ impl MergerSettings {
     pub fn fetch_from_file(path_to_settings: &Path) -> Result<MergerSettings, Box<dyn std::error::Error>> {
         let mut settings_file = File::open(path_to_settings)?;
         let mut contents = String::new();
-        settings_file.read_to_string(&mut contents);
+        settings_file.read_to_string(&mut contents)?;
         let merger_settings: MergerSettings = match toml::from_str(&contents) {
             Ok(sett) => sett,
             _ => Default::default(),

@@ -3,17 +3,12 @@ mod vgtk_ext;
 
 use vgtk::ext::*;
 use vgtk::lib::gio::ApplicationFlags;
-use vgtk::lib::glib;
 use vgtk::lib::gtk::*;
 use vgtk::{gtk, run, Component, UpdateAction, VNode};
 
-use std::path::{PathBuf,Path};
-use std::time;
-use std::thread;
-use std::sync::{Arc, Mutex};
+use std::path::Path;
 
 use vgtk_ext::*;
-use std::env;
 
 use paradoxmerger::configs::{MergerSettings,ConfigOptions};
 use paradoxmerger::{ModMerger,ModPack,ModStatus,ModToken};
@@ -40,14 +35,6 @@ impl Renderable for ModStatus {
     }
 }
 
-fn default_merger_settings() -> ModMerger {
-    ModMerger::new(
-        false,
-        "Merged Patch",
-        &env::current_dir().unwrap_or_default(),
-    )
-}
-
 #[derive(Clone, Debug)]
 struct Model {
     configs: Vec<ConfigOptions>,
@@ -55,17 +42,11 @@ struct Model {
     gui_settings: MergerSettings,
     config_selected: Option<String>,
     scan_auto: bool,
-    worker_thread: Arc<Mutex<vgtk::lib::glib::Receiver<Message>>>,
 }
 
 impl Default for Model {
     fn default() -> Self {
         let settings = MergerSettings::default();
-        let (sender,receiver) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
-
-        std::thread::spawn(move || {
-            daddy_thread(sender)
-        });
 
         Self {
             configs: ConfigOptions::fetch_user_configs(true).unwrap_or(Vec::new()),
@@ -73,7 +54,6 @@ impl Default for Model {
             gui_settings: settings,
             config_selected: None,
             scan_auto: false,
-            worker_thread: Arc::new(Mutex::new(receiver)),
         }
     }
 }
@@ -100,11 +80,6 @@ enum Message {
     SaveLoadOrder,
     GeneratePatch,
     ToggleModStatus(ModToken),
-    ComputeThread,
-}
-
-async fn print_ok_dialog() -> vgtk::lib::gtk::ResponseType {
-    vgtk::message_dialog(vgtk::current_window().as_ref(), DialogFlags::MODAL, MessageType::Info, ButtonsType::OkCancel, true, "Successfully merged").await
 }
 
 impl Component for Model {
@@ -112,10 +87,6 @@ impl Component for Model {
     type Properties = ();
 
     fn update(&mut self, msg: Self::Message) -> UpdateAction<Self> {
-        let mut res = UpdateAction::None;
-
-        (**self.worker_thread).attach(None, move |msg| {
-           
         match msg {
             Message::Exit => {
                 vgtk::quit();
@@ -170,8 +141,11 @@ impl Component for Model {
 
                     let mut mod_merger = ModMerger::new(self.gui_settings.extract,&self.gui_settings.patch_name,Path::new(&self.gui_settings.patch_path));
                     mod_merger.set_config(conf.clone());
+                    //TODO: Print Errors
                     let merge_result = mod_merger.merge_and_save(&self.mod_pack);
-                    
+                    if let Err(merge_err) = merge_result {
+                        eprintln!("{}",merge_err);
+                    }
                     
                     MergeDialog::run();
                 }
@@ -183,13 +157,8 @@ impl Component for Model {
                     None => {eprintln!("Could not verify token!");},
                 };
                 UpdateAction::None
-            },
-            Message::ComputeThread => {
-                println!("This text should appear every 10 seconds or so.");
-                UpdateAction::None
             }
         }
-    })
 }
 
     fn view(&self) -> VNode<Model> {
@@ -302,20 +271,12 @@ impl Component for MergeDialog {
 
 impl MergeDialog {
     fn run() {
-        vgtk::run_dialog::<MergeDialog>(vgtk::current_window().as_ref());
-    }
-}
-
-fn daddy_thread(sender: vgtk::lib::glib::Sender<Message>) {
-    'compute_thread: loop {
-        thread::sleep(time::Duration::from_secs(10));
-        let _ = sender.send(Message::ComputeThread);
+        let _future = vgtk::run_dialog::<MergeDialog>(vgtk::current_window().as_ref());
     }
 }
 
 
 fn main() {
-    let e = 3;
     pretty_env_logger::init();
     std::process::exit(run::<Model>());
 }

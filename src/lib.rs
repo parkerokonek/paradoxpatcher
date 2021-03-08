@@ -256,12 +256,13 @@ impl ModMerger {
 
     pub fn with_config(self, game_config: ConfigOptions) -> Self {
         let mut new_merger = self;
-        mem::replace(&mut new_merger.game_config,Some(game_config));
+        new_merger.game_config = Some(game_config);
+
         new_merger
     }
 
     pub fn set_config(&mut self, game_config: ConfigOptions) {
-        mem::replace(&mut self.game_config,Some(game_config));
+        self.game_config = Some(game_config);
     }
 
     pub fn extract(&mut self, extract: bool) -> bool {
@@ -406,7 +407,7 @@ pub fn set_entire_mod_list(path: &Path, new_launcher: bool, mod_list: &[ModStatu
         output.push_str("}\r\n");
         output.push_str(text_tail);
 
-        let res = files::write_file_with_string(&settings, output, false)?;
+        files::write_file_with_string(&settings, output, false)?;
 
     }
     Ok(())
