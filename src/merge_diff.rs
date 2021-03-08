@@ -156,7 +156,7 @@ mod test {
         let no_tier = "OR = \r\n{\r\n\tcash = 240\r\n\treligion = rustacean\r\n}\r\n".to_owned();
         let change_cash = "OR = \r\n{\r\n\ttier = KING\r\n\t AND = {\r\n\tbob = jim\r\n\t zoop = zorp}\r\n\treligion = rustacean\r\n}\r\n".to_owned();
         
-        let both_changes = "OR = \r\n{\r\n\t AND = {\r\n\tbob = jim\r\n\t zoop = zorp}\r\n\treligion = rustacean\r\n}\r\n".to_owned();
+        let both_changes = "\r\nOR =\r\n{\r\n\t AND = {\r\n\tbob = jim\r\n\t zoop = zorp}\r\n\treligion = rustacean\r\n}".to_owned();
         
         assert_eq!(diff_single_conflict(&source, &[no_tier,change_cash], true),Some(both_changes));
     }
