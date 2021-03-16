@@ -56,3 +56,11 @@ impl fmt::Display for MergerError {
 }
 
 impl Error for MergerError {}
+
+pub fn verbose_error(verbose: bool, fatal: bool, err: MergerError) -> Result<(),MergerError> {
+    match (verbose, fatal) {
+        (_,true) => {Err(err)},
+        (true,false) => {eprintln!("{}",err); Ok(())},
+        (false,false) => {Ok(())}
+    }
+}

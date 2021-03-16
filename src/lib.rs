@@ -16,7 +16,7 @@ pub use moddata::{
     }
 };
 
-use error::MergerError;
+use error::{MergerError,verbose_error};
 
 use std::path::{PathBuf,Path};
 use std::fs::{self,File};
@@ -740,48 +740,60 @@ fn extract_all_files(&self, mods: &ModPack, to_zip: bool) {
     if to_zip {
         let zip_target = folder_name;
         let zip_target: PathBuf = [&zip_target,".zip"].iter().collect();
-        let mut staged_zip_data = HashMap::new();
-        for mod_idx in mods.load_order() {
-            if mod_idx.status() {
-            let mod_info = match mods.get_mod(mod_idx.name()) {
-                Some(m) => m,
-                None => {eprintln!("Error looking up previously registered mod: {}", mod_idx.name()); continue},
-            };
-                if mod_info.is_zip() {
-                    let files = mod_zip_fetch_all(&mod_info);
-                    for (file_path,file_data) in files {
-                        let _old_data = staged_zip_data.insert(file_path, file_data);
-                    }
-                } else {
-                    let files = mod_path_fetch_all(&mod_info);
-                    for (file_path,file_data) in files {
-                        let _old_data = staged_zip_data.insert(file_path, file_data);
-                    }
+        let _res = self.extract_all_files_zip(mods, mod_folder, &zip_target);
+    } else {
+        let _res = self.extract_all_files_folder(mods, mod_folder);
+    }
+}
+
+fn extract_all_files_folder(&self, mods: &ModPack, destination_folder: &Path) -> Result<(),MergerError> {
+    for mod_idx in mods.load_order() {
+        if mod_idx.status() {
+        let mod_info = match mods.get_mod(mod_idx.name()) {
+            Some(m) => m,
+            None => {eprintln!("Error looking up previously registered mod: {}", mod_idx.name()); continue},
+        };
+            if mod_info.is_zip() {
+                let files = mod_zip_fetch_all(&mod_info);
+                for (file_path,file_data) in files {
+                    let _res = ModMerger::write_to_mod_folder(destination_folder, &file_data, Path::new(&file_path),true);
+                }
+            } else {
+                let _res = files::copy_directory_tree(&mod_info.get_data_path() , &destination_folder, true, true);
+                //let files = mod_path_fetch_all(&mod_info);
+                //for (file_path,file_data) in files {
+                //    let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
+                //}
+            }
+    }
+
+}
+Ok(())
+}
+
+fn extract_all_files_zip(&self, mods: &ModPack, destination: &Path, archive: &Path) -> Result<(),MergerError> {
+    let mut staged_zip_data = HashMap::new();
+    for mod_idx in mods.load_order() {
+        if mod_idx.status() {
+        let mod_info = match mods.get_mod(mod_idx.name()) {
+            Some(m) => m,
+            None => {eprintln!("Error looking up previously registered mod: {}", mod_idx.name()); continue},
+        };
+            if mod_info.is_zip() {
+                let files = mod_zip_fetch_all(&mod_info);
+                for (file_path,file_data) in files {
+                    let _old_data = staged_zip_data.insert(file_path, file_data);
+                }
+            } else {
+                let files = mod_path_fetch_all(&mod_info);
+                for (file_path,file_data) in files {
+                    let _old_data = staged_zip_data.insert(file_path, file_data);
                 }
             }
         }
-        let _result = ModMerger::write_to_mod_zip(mod_folder, staged_zip_data, &zip_target);
-    } else {
-        for mod_idx in mods.load_order() {
-            if mod_idx.status() {
-            let mod_info = match mods.get_mod(mod_idx.name()) {
-                Some(m) => m,
-                None => {eprintln!("Error looking up previously registered mod: {}", mod_idx.name()); continue},
-            };
-                if mod_info.is_zip() {
-                    let files = mod_zip_fetch_all(&mod_info);
-                    for (file_path,file_data) in files {
-                        let _result = ModMerger::write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
-                    }
-                } else {
-                    let _res = files::copy_directory_tree(&mod_info.get_data_path() , &mod_folder, true, true);
-                    //let files = mod_path_fetch_all(&mod_info);
-                    //for (file_path,file_data) in files {
-                    //    let result = write_to_mod_folder(mod_folder, &file_data, Path::new(&file_path),true);
-                    //}
-                }
-        }
     }
-    }
+    let _result = ModMerger::write_to_mod_zip(destination, staged_zip_data, &archive);
+    Ok(())
 }
+
 }
