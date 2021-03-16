@@ -86,16 +86,6 @@ fn generate_single_mod(mod_path: &Path, mod_file: &Path) -> Option<ModInfo> {
         re::grep(&modmod_content, regex, multiple_res).iter().map(|x| PathBuf::from(re::trim_quotes(x))).collect()
     };
 
-    /* Rust devs pls let me do this T_T
-    let grep_mod_content<T> = |regex: &Regex, match_multiple: bool, closure: &dyn Fn(String) -> T| -> Vec<T> {
-        re::grep(&modmod_content,regex,match_multiple).iter().map(closure).collect()
-    };
-
-    let clean_string = |s| re::trim_quotes(s);
-    let clean_path = |p| PathBuf::from(re::trim_quotes(p));
-    
-    */
-
     let archive: Vec<String> = grep_strings(&RE_ARCHIVE,false);
     let path: Vec<String> = grep_strings(&RE_PATHS, false);
     let name: Vec<String> = grep_strings(&RE_NAMES, false);
@@ -290,7 +280,7 @@ impl ModMerger {
 /// Given the path to a paradox game's user directory, generate a list of all enabled mods and their metadata
 /// #Arguments
 /// 
-/// * `path` - Path of the game's user directory, typically in Documents or ~/.Paradox\ Interactive/
+/// * `register_conflicts` - if true, search and record for mod conflicts as we add mods
 pub fn mod_pack_from_enabled(&self, register_conflicts: bool) -> Result<ModPack,MergerError> {
     //TODO: Make more error types
     let config: &ConfigOptions = match &self.game_config {
@@ -328,6 +318,9 @@ pub fn mod_pack_from_enabled(&self, register_conflicts: bool) -> Result<ModPack,
 }
 
 /// Generate a list of all mods, enabled or not
+/// #Arguments
+/// 
+/// * `register_conflicts` - if true, search and record for mod conflicts as we add mods
 pub fn mod_pack_from_all(&self, register_conflicts: bool) -> Result<Vec<ModInfo>,MergerError> {
     //TODO: Make more error types
     let config: &ConfigOptions = match &self.game_config {
@@ -371,6 +364,12 @@ pub fn mod_pack_from_all(&self, register_conflicts: bool) -> Result<Vec<ModInfo>
     Ok(mod_list)
 }
 
+/// Writes our current mod list of enabled and disabled mods to the paradox launcher settings file
+/// #Arguments
+/// 
+/// * `new_launcher` - true for new launcher settings format, false for old pdx launcher
+///  
+/// * `most_list` - a list of all mods, marked for enabled or disabled
 pub fn set_entire_mod_list(path: &Path, new_launcher: bool, mod_list: &[ModStatus]) -> Result<(),Box<dyn std::error::Error>> {
     if new_launcher {
         println!("New Launcher");
@@ -413,6 +412,12 @@ pub fn set_entire_mod_list(path: &Path, new_launcher: bool, mod_list: &[ModStatu
     Ok(())
 }
 
+/// List all Mods that are enabled in the current launcher
+/// #Arguments
+/// 
+/// * `path` - Path to paradox user settings folder
+/// 
+/// * `new_launcher` - true if using the new Paradox launcher
 fn list_enabled_mods(path: &Path, new_launcher: bool) -> Result<Vec<String>,MergerError> {
     if new_launcher {
         let settings = path.join("dlc_load.json");
@@ -502,29 +507,16 @@ fn auto_merge(&self, mod_pack: &ModPack) -> Result<u32,error::MergerError> {
             };
 
             for (idx,mod_info) in conf.list_mods().iter().enumerate() {
-                if let Some(current) = mod_pack.get_mod(&mod_info) {
-                    if current.is_zip() {
-                        if let Some(contents) = mod_zip_fetch(conf.path(), current, should_transcode, should_transcode) {
-                            //println!("{}",contents);
-                            file_contents.push(contents);
-                            file_indices.push(idx);
-                        } else {
-                            eprintln!("Error unpacking file in previously registered .zip: {}",mod_info);
-                        }
-                    } else {
-                        match mod_path_fetch(conf.path(), current, should_transcode, should_transcode) {
-                            Ok(contents) => {
-                                file_contents.push(contents);
-                                file_indices.push(idx);
-                            },
-                            Err(e) => {
-                                eprintln!("Error unpacking file in previously registered folder: {}, {}",mod_info,e);
-                            },
-                        };
-                    }
-                } else {
-                    return Err(MergerError::ModPackLookupError(mod_info.clone()));
+                let mod_file_content = ModMerger::load_file_from_mod(mod_pack, conf.path(), &mod_info, should_transcode, should_transcode);
+                match mod_file_content {
+                    Err(MergerError::LoadRegisteredModError(s)) => eprintln!("{}",MergerError::LoadRegisteredModError(s)),
+                    Ok(content) => {
+                        file_contents.push(content);
+                        file_indices.push(idx)
+                    },
+                    Err(e) => return Err(e),
                 }
+                
             }
 
             let file_content = diff_single_conflict(&vanilla_file, &file_contents, false);
@@ -560,6 +552,32 @@ fn auto_merge(&self, mod_pack: &ModPack) -> Result<u32,error::MergerError> {
         }
         
         Ok(successful)
+}
+
+/// Helper function that the content of a single file from a singular mod in a mod pack, can do Zip or Folder types
+/// #Arguments
+/// 
+/// * `mod_pack` - the reference mod pack we are using for our merge
+/// 
+/// * `file_path` - the path of the file (relative to the game data directory) we are loading
+/// 
+/// * `mod_name` - the name of the mod we are loading, may replace with token later
+/// 
+/// * `decode` - true means try to decode LATIN1 into Unicode for Rust's sake
+/// 
+/// * `normalize` - true for normalizing line endings to windows-style
+fn load_file_from_mod(mod_pack: &ModPack, file_path: &Path, mod_name: &str, decode: bool, normalize: bool) -> Result<String, error::MergerError>{
+    if let Some(current) = mod_pack.get_mod(mod_name) {
+        if current.is_zip() {
+            mod_zip_fetch(file_path, current, decode, normalize)
+            .ok_or_else(|| MergerError::LoadRegisteredModError(mod_name.to_string()))
+        } else {
+            mod_path_fetch(file_path, current, decode, normalize)
+            .map_err(|_| MergerError::LoadRegisteredModError(mod_name.to_string()))
+        }
+    } else {
+        Err(MergerError::ModPackLookupError(mod_name.to_string()))
+    }
 }
 
 pub fn merge_and_save(&self, mod_pack: &ModPack) -> Result<u32,error::MergerError> {
