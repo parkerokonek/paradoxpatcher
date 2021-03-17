@@ -13,6 +13,9 @@ pub use moddata::{
         ModPack,
         ModStatus,
         ModToken
+    },
+    mod_conflict::{
+        ModConflict
     }
 };
 
@@ -221,15 +224,17 @@ fn vanilla_fetch(dir: &Path, config: &ConfigOptions, decode: bool, normalize: bo
 pub struct ModMerger {
     game_config: Option<ConfigOptions>,
     extract_all: bool,
+    verbose: bool,
     patch_name: String,
     patch_path: PathBuf,
 }
 
 impl ModMerger {
-    pub fn new(extract_all: bool, patch_name: &str, patch_path: &Path) -> Self {
+    pub fn new(extract_all: bool, verbose: bool, patch_name: &str, patch_path: &Path) -> Self {
         ModMerger {
             game_config: None,
             extract_all,
+            verbose,
             patch_name: patch_name.to_owned(),
             patch_path: patch_path.to_path_buf(),
         }
@@ -239,6 +244,7 @@ impl ModMerger {
         ModMerger {
             game_config: Some(game_config),
             extract_all: self.extract_all,
+            verbose: self.verbose,
             patch_name: self.patch_name.clone(),
             patch_path: self.patch_path.clone(),
         }
@@ -480,45 +486,17 @@ pub fn files_in_vanilla(config: &ConfigOptions) -> Vec<PathBuf> {
 /// * `mod_pack` - the current mod load order to be merged 
 fn auto_merge(&self, mod_pack: &ModPack) -> Result<u32,error::MergerError> {
     let config: &ConfigOptions = self.game_config.as_ref().expect("The developer is calling code wrong.");
-    //TODO: Verbosity
-    let verbose = false;
     let folder_name = self.patch_name.to_ascii_lowercase();
 
     let mut successful = 0;
 
         for conf in mod_pack.list_conflicts() {
-            if verbose {
-                println!("Attempting to merge: {}",conf.path().display());
-            }
-            let mut file_contents: Vec<String> = Vec::new();
-            let mut file_indices: Vec<usize> = Vec::new();
             let should_transcode = match conf.path().extension() {
                 Some(ext) => !config.no_transcode.iter().any(|no_ext| ext == no_ext.as_str()),
                 None => false,
             };
 
-            // TODO: Make this work too
-            let vanilla_file = match vanilla_fetch(conf.path(),&config,should_transcode,should_transcode) {
-                Ok(contents) => contents,
-                Err(_) => {
-                    let (vanilla_str,conf_str) = ("vanilla".to_string(),conf.path().to_string_lossy());
-                    return Err(MergerError::CouldNotCompareError(vanilla_str,conf_str.to_string()));
-                },
-            };
-
-            for (idx,mod_info) in conf.list_mods().iter().enumerate() {
-                let mod_file_content = ModMerger::load_file_from_mod(mod_pack, conf.path(), &mod_info, should_transcode, should_transcode);
-                match mod_file_content {
-                    Err(MergerError::LoadRegisteredModError(s)) => eprintln!("{}",MergerError::LoadRegisteredModError(s)),
-                    Ok(content) => {
-                        file_contents.push(content);
-                        file_indices.push(idx)
-                    },
-                    Err(e) => return Err(e),
-                }
-                
-            }
-
+            let (vanilla_file,file_contents,file_indices) = self.read_mod_conflict(mod_pack,conf,should_transcode)?;
             let file_content = diff_single_conflict(&vanilla_file, &file_contents, false);
 
             if let Some(content) = &file_content {
@@ -552,6 +530,48 @@ fn auto_merge(&self, mod_pack: &ModPack) -> Result<u32,error::MergerError> {
         }
         
         Ok(successful)
+}
+
+/// Helper function for auto_merge that takes information for one mod conflict and tries to load all relevant files
+/// 
+/// #Arguments
+/// 
+/// * `mod_pack` - the reference mod_pack to pull file info from
+/// 
+/// * `should_transcode` - if yes, automatically convert LATIN1 to Unicode and vice versa
+
+fn read_mod_conflict(&self, mod_pack: &ModPack, mod_conflict: &ModConflict, should_transcode: bool) -> Result<(String,Vec<String>,Vec<usize>),MergerError> {
+    let config: &ConfigOptions = self.game_config.as_ref().expect("The developer is calling code wrong.");
+
+    if self.verbose {
+        println!("Attempting to merge: {}",mod_conflict.path().display());
+    }
+    let mut file_contents: Vec<String> = Vec::new();
+    let mut file_indices: Vec<usize> = Vec::new();
+
+    // TODO: Make this work too
+    let vanilla_file = match vanilla_fetch(mod_conflict.path(),&config,should_transcode,should_transcode) {
+        Ok(contents) => contents,
+        Err(_) => {
+            let (vanilla_str,conf_str) = ("vanilla".to_string(),mod_conflict.path().to_string_lossy());
+            return Err(MergerError::CouldNotCompareError(vanilla_str,conf_str.to_string()));
+        },
+    };
+
+    for (idx,mod_info) in mod_conflict.list_mods().iter().enumerate() {
+        let mod_file_content = ModMerger::load_file_from_mod(mod_pack, mod_conflict.path(), &mod_info, should_transcode, should_transcode);
+        match mod_file_content {
+            Err(MergerError::LoadRegisteredModError(s)) => eprintln!("{}",MergerError::LoadRegisteredModError(s)),
+            Ok(content) => {
+                file_contents.push(content);
+                file_indices.push(idx)
+            },
+            Err(e) => return Err(e),
+        }
+        
+    }
+
+    Ok((vanilla_file,file_contents,file_indices))
 }
 
 /// Helper function that the content of a single file from a singular mod in a mod pack, can do Zip or Folder types
@@ -724,10 +744,6 @@ pub fn write_mod_desc_to_folder(args: &MergerSettings, mod_pack: &ModPack) -> Re
 /// 
 /// * `mods` - list of enabled mods to extract/copy
 /// 
-/// * `args` - basic output mod info
-/// 
-/// * `config` - information about the game files
-/// 
 /// * `to_zip` - if yes, compress output to zip file, uses a lot of memory as all data is written to disk at once
 fn extract_all_files(&self, mods: &ModPack, to_zip: bool) {
     //TODO: clean up extract all files
@@ -746,6 +762,12 @@ fn extract_all_files(&self, mods: &ModPack, to_zip: bool) {
     }
 }
 
+/// Extracts all files in a mod pack into a selected folder
+/// #Arguments
+/// 
+/// * `mods` - the mod pack to extract
+/// 
+/// * `destination_folder` - folder path to dump content to
 fn extract_all_files_folder(&self, mods: &ModPack, destination_folder: &Path) -> Result<(),MergerError> {
     for mod_idx in mods.load_order() {
         if mod_idx.status() {
@@ -771,6 +793,14 @@ fn extract_all_files_folder(&self, mods: &ModPack, destination_folder: &Path) ->
 Ok(())
 }
 
+/// Extracts all files in a mod pack into a selected archive
+/// #Arguments
+/// 
+/// * `mods` - the mod pack to extract
+/// 
+/// * `destination` - parent folder for zip archive
+/// 
+/// * `archive` - name of the zip file (including extension)
 fn extract_all_files_zip(&self, mods: &ModPack, destination: &Path, archive: &Path) -> Result<(),MergerError> {
     let mut staged_zip_data = HashMap::new();
     for mod_idx in mods.load_order() {
