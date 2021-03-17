@@ -378,12 +378,14 @@ pub fn mod_pack_from_all(&self, register_conflicts: bool) -> Result<Vec<ModInfo>
 /// * `most_list` - a list of all mods, marked for enabled or disabled
 pub fn set_entire_mod_list(path: &Path, new_launcher: bool, mod_list: &[ModStatus]) -> Result<(),Box<dyn std::error::Error>> {
     if new_launcher {
-        println!("New Launcher");
+        eprintln!("New Launcher");
+        return Err(Box::new(MergerError::UnknownError));
     } else {
         let settings = path.join("settings.txt");
         let old_settings_str = files::fetch_file_in_path(&settings, false, true)?;
 
         let mod_list = mod_list.iter().filter(|item| item.status() ).map(|item| item.mod_file() );
+
         
         let split_text: Vec<_> = old_settings_str.splitn(2,"last_mods=\r\n{").collect();
         let (text_head,text_body) = match (split_text.get(0),split_text.get(1)) {
@@ -479,10 +481,6 @@ pub fn files_in_vanilla(config: &ConfigOptions) -> Vec<PathBuf> {
 /// 
 /// #Arguments
 /// 
-/// * `config` - configuration options for our game
-/// 
-/// * `args` - options left over from arguments, will be removed soon
-/// 
 /// * `mod_pack` - the current mod load order to be merged 
 fn auto_merge(&self, mod_pack: &ModPack) -> Result<u32,error::MergerError> {
     let config: &ConfigOptions = self.game_config.as_ref().expect("The developer is calling code wrong.");
@@ -496,7 +494,10 @@ fn auto_merge(&self, mod_pack: &ModPack) -> Result<u32,error::MergerError> {
                 None => false,
             };
 
-            let (vanilla_file,file_contents,file_indices) = self.read_mod_conflict(mod_pack,conf,should_transcode)?;
+            let (vanilla_file,file_contents,file_indices) = match self.read_mod_conflict(mod_pack,conf,should_transcode) {
+                Ok((a,b,c)) => (a,b,c),
+                Err(e) => {error::verbose_error(self.verbose, false, e)?; continue},
+            };
             let file_content = diff_single_conflict(&vanilla_file, &file_contents, false);
 
             if let Some(content) = &file_content {
@@ -509,7 +510,9 @@ fn auto_merge(&self, mod_pack: &ModPack) -> Result<u32,error::MergerError> {
                 };
                 continue;
             } else {
-                eprintln!("This file will need manual merging: {}",conf.path().display());
+                if self.verbose {
+                    eprintln!("This file will need manual merging: {}",conf.path().display());
+                }
 
                 //Process vanilla file
                 let mod_folder = folder_name.clone() + "_bad";

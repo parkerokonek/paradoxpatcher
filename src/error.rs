@@ -55,12 +55,18 @@ impl fmt::Display for MergerError {
     }
 }
 
-impl Error for MergerError {}
 
-pub fn verbose_error(verbose: bool, fatal: bool, err: MergerError) -> Result<(),MergerError> {
+impl Error for MergerError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
+pub fn verbose_error<T>(verbose: bool, fatal: bool, res: T) -> Result<(),T>
+where T: Error {
     match (verbose, fatal) {
-        (_,true) => {Err(err)},
-        (true,false) => {eprintln!("{}",err); Ok(())},
-        (false,false) => {Ok(())}
+        (_,true) => {Err(res)},
+        (true,false) => {eprintln!("{}",res); Ok(())},
+        _ => Ok(()),
     }
 }
