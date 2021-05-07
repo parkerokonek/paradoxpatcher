@@ -225,16 +225,18 @@ pub struct ModMerger {
     game_config: Option<ConfigOptions>,
     extract_all: bool,
     verbose: bool,
+    dry_run: bool,
     patch_name: String,
     patch_path: PathBuf,
 }
 
 impl ModMerger {
-    pub fn new(extract_all: bool, verbose: bool, patch_name: &str, patch_path: &Path) -> Self {
+    pub fn new(extract_all: bool, patch_name: &str, patch_path: &Path) -> Self {
         ModMerger {
             game_config: None,
             extract_all,
-            verbose,
+            verbose: false,
+            dry_run: false,
             patch_name: patch_name.to_owned(),
             patch_path: patch_path.to_path_buf(),
         }
@@ -245,6 +247,7 @@ impl ModMerger {
             game_config: Some(game_config),
             extract_all: self.extract_all,
             verbose: self.verbose,
+            dry_run: self.dry_run,
             patch_name: self.patch_name.clone(),
             patch_path: self.patch_path.clone(),
         }
@@ -613,7 +616,8 @@ pub fn merge_and_save(&self, mod_pack: &ModPack) -> Result<u32,error::MergerErro
     if self.extract_all {
         self.extract_all_files(mod_pack, false);
     }
-    
+
+    let _e = self.write_mod_desc_to_folder(mod_pack);
     self.auto_merge(mod_pack)
 }
 
@@ -689,20 +693,21 @@ fn write_to_mod_zip(mod_folder: &Path, staged_data: HashMap<String,Vec<u8>>, zip
 /// 
 /// * `mod_pack` - information on all loaded mods, includes conflicting files, enabled mods, etc.
 
-pub fn write_mod_desc_to_folder(args: &MergerSettings, mod_pack: &ModPack) -> Result<(),std::io::Error> {
-    let mut mod_file_name = PathBuf::from(args.folder_name());
+pub fn write_mod_desc_to_folder(&self, mod_pack: &ModPack) -> Result<(),std::io::Error> {
+    let folder_name = self.patch_name.to_ascii_lowercase();
+    let mut mod_file_name = PathBuf::from(&folder_name);
     mod_file_name.set_extension("mod");
 
-    let full_path = if args.dry_run || mod_pack.list_conflicts().is_empty() {
+    let full_path = if self.dry_run || mod_pack.list_conflicts().is_empty() {
         ModMerger::current_dir_path(&mod_file_name)?
     } else {
-        files::relative_folder_path(Path::new(&args.folder_name()), &mod_file_name)?
+        files::relative_folder_path(&self.patch_path, &mod_file_name)?
     };
 
     //Write the header of the mod file with name and archive
-    let mut file_contents = format!("name = \"{}\"\narchive = \"mod/{}.zip\"\n", args.patch_name, args.folder_name());
+    let mut file_contents = format!("name = \"{}\"\narchive = \"mod/{}.zip\"\n", self.patch_name, &mod_file_name.display());
 
-    if args.extract {
+    if self.extract_all {
         let mod_user_dirs = mod_pack.list_user_dirs();
         if !mod_user_dirs.is_empty() {
             let mut user_dir = String::from("user_dir = \"");
@@ -724,7 +729,7 @@ pub fn write_mod_desc_to_folder(args: &MergerSettings, mod_pack: &ModPack) -> Re
     file_contents.push_str("}\n");
 
     // If we're doing a full extraction, then grab all of the replacement paths
-    if args.extract {
+    if self.extract_all {
         for single_mod in mod_pack.list_replacement_paths() {
             let replace_line = format!("replace_path = \"{}\"\n",single_mod.display());
             file_contents.push_str(&replace_line);
