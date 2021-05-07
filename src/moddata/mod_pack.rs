@@ -185,7 +185,10 @@ impl ModPack {
     }
 
     pub fn get_mod_token(&self, name: &str) -> Option<ModToken> {
-        None
+        match self.mod_lookup.get(name) {
+            Some(real_id) => Some(ModToken {idx: *real_id, valid_hash: self.noncrypto_hash}),
+            None => None,
+        }
     }
 
     pub fn toggle_by_name(&mut self, name: &str) -> Option<bool> {

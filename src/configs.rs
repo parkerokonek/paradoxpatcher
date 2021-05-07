@@ -30,23 +30,68 @@ impl SupportedGame {
     }
 }
 
-pub struct ArgOptions {
+#[derive(Deserialize,Serialize,Debug,Clone)]
+pub struct MergerSettings {
     pub config_path: PathBuf,
     pub extract: bool,
     pub dry_run: bool,
     pub verbose: bool,
     pub game_id: String,
     pub patch_name: String,
+    pub patch_path: String,
 }
 
-impl ArgOptions {
-    pub fn new(config_path: PathBuf, extract: bool, dry_run: bool, verbose: bool, game_id: String, patch_name: String) -> Self {
-        ArgOptions {config_path,extract,dry_run,verbose,game_id,patch_name}
+impl Default for MergerSettings {
+    fn default() -> Self {
+        let user_path = ProjectDirs::from("com", "Parker Okonek", "Paradox Merger").expect("Something went wrong in reading the user dirs.");
+        //TODO: i dunno
+        //let _e = fs::create_dir_all(user_path.config_dir())?;
+        let config_path = user_path.config_dir().join("merger.toml");
+        let patch_name = String::from("Merged Patch");
+        let patch_path = String::from(files::relative_folder_path(Path::new(""),Path::new("")).unwrap_or_default().to_string_lossy());
+        let game_id = String::new();
+        let extract = false;
+        let verbose = false;
+        let dry_run = false;
+        
+        MergerSettings {config_path, extract, dry_run, verbose, game_id, patch_name, patch_path}
     }
+}
+
+impl MergerSettings {
+    pub fn new(config_path: PathBuf, extract: bool, dry_run: bool, verbose: bool, game_id: String, patch_name: String, patch_path: String) -> Self {
+        MergerSettings {config_path,extract,dry_run,verbose,game_id,patch_name,patch_path}
+    }
+
     pub fn folder_name(&self) -> String {
         let mut mod_folder = self.patch_name.clone();
         mod_folder.make_ascii_lowercase();
         mod_folder
+    }
+
+    // TODO: Maybe do some custom error types here
+    pub fn fetch_from_file(path_to_settings: &Path) -> Result<MergerSettings, Box<dyn std::error::Error>> {
+        let mut settings_file = File::open(path_to_settings)?;
+        let mut contents = String::new();
+        settings_file.read_to_string(&mut contents)?;
+        let merger_settings: MergerSettings = match toml::from_str(&contents) {
+            Ok(sett) => sett,
+            _ => Default::default(),
+        };
+        
+        Ok(merger_settings)
+    }
+
+    pub fn store_in_file(&self, path_to_settings: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        let mut settings_file = File::create(path_to_settings)?;
+        // TODO: Okay yeah this does need custom errors
+        let contents = toml::to_string(&self)?;
+
+        settings_file.write_all(contents.as_bytes()).map_err(Box::from)
+    }
+
+    pub fn extract_toggle(&mut self) {
+        self.extract = !self.extract;
     }
 }
 
@@ -122,26 +167,15 @@ impl ConfigOptions {
         new_options.data_path = new_data_path;
         new_options
     }
-}
 
 
-// Don't worry about it
-fn supported_games() -> Vec<SupportedGame> {
-    vec![
-        SupportedGame::new("CK2", "Crusader Kings II"),
-        SupportedGame::new("CK3","Crusader Kings III"),
-        SupportedGame::new("EU4","Europa Universalis IV"),
-        SupportedGame::new("HOI4", "Hearts of Iron IV"),
-        SupportedGame::new("Stellaris","Stellaris"),
-        SupportedGame::new("VIC2", "Victoria 2"),
-    ]
-}
 
-pub fn parse_user_config(arguments: &ArgOptions, defaults: bool) -> Result<ConfigOptions,Box<dyn std::error::Error>> {
+pub fn parse_user_config(arguments: &MergerSettings, defaults: bool) -> Result<ConfigOptions,Box<dyn std::error::Error>> {
     let configs = if arguments.config_path.components().count() == 0 {
-        fetch_user_configs(defaults)?
+        //TODO: make this depend on the actual object
+        ConfigOptions::fetch_user_configs(defaults)?
     } else {
-        parse_configs(&arguments.config_path)?
+        ConfigOptions::parse_configs(&arguments.config_path)?
     };
     if arguments.game_id.is_empty() {
         match configs.into_iter().next() {
@@ -190,14 +224,15 @@ pub fn fetch_user_configs(defaults: bool) -> Result<Vec<ConfigOptions>, Box<dyn 
     if let Err(e) = config_file {
         if defaults {
             println!("Generating new default configs");
-            let configs = generate_default_configs();
-            let _ok = store_user_configs(&configs)?;
+            //TODO: Implement default or something
+            let configs = ConfigOptions::generate_default_configs();
+            let _ok = ConfigOptions::store_user_configs(&configs)?;
             Ok(configs)
         } else {
             Err(Box::new(e))
         }
     } else {
-        match parse_configs(&config_path) {
+        match ConfigOptions::parse_configs(&config_path) {
             Ok(v) => Ok(v),
             Err(e) => Err(Box::new(e)),
         }
@@ -306,6 +341,20 @@ fn generate_default_configs() -> Vec<ConfigOptions> {
     
     config_options
 }
+}
+
+    // Don't worry about it
+    fn supported_games() -> Vec<SupportedGame> {
+        vec![
+            SupportedGame::new("CK2", "Crusader Kings II"),
+            SupportedGame::new("CK3","Crusader Kings III"),
+            SupportedGame::new("EU4","Europa Universalis IV"),
+            SupportedGame::new("HOI4", "Hearts of Iron IV"),
+            SupportedGame::new("Stellaris","Stellaris"),
+            SupportedGame::new("VIC2", "Victoria 2"),
+        ]
+    }
+
 
 fn get_default_steamapps_dir() -> PathBuf {
     //Check if windows (x86 or 64)

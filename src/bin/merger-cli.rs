@@ -10,13 +10,8 @@ fn main() {
     let args = parse_args();
     let config = parse_user_config(&args,true).expect("Couldn't read configuration file");
     
-    let mut mod_pack = ModPack::default().restrict_paths(&config.valid_paths).restrict_extensions(&config.valid_extensions);
-    let mod_list: Vec<ModInfo> = generate_enabled_mod_list(&config.mod_path,config.new_launcher);
-    let vanilla = files_in_vanilla(&config);
-    let val_ref: Vec<&Path> = vanilla.iter().map(|x| x.as_path()).collect();
-    mod_pack.register_vanilla(&val_ref);
-    
-    mod_pack.add_mods(&mod_list, true, true);
+    let merger = ModMerger::new().with_config(config);
+    let mod_pack = merger.mod_pack_from_enabled(true).expect("Could not generate mod list.");
 
     if !args.dry_run {
         if args.extract{
