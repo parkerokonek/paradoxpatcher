@@ -1,4 +1,4 @@
-#![recursion_limit="512"]
+#![recursion_limit = "512"]
 mod vgtk_ext;
 
 use vgtk::ext::*;
@@ -10,8 +10,8 @@ use std::path::Path;
 
 use vgtk_ext::*;
 
-use paradoxmerger::configs::{MergerSettings,ConfigOptions};
-use paradoxmerger::{ModMerger,ModPack,ModStatus,ModToken};
+use paradoxmerger::configs::{ConfigOptions, MergerSettings};
+use paradoxmerger::{ModMerger, ModPack, ModStatus, ModToken};
 
 const H_PADDING: i32 = 10;
 const V_PADDING: i32 = 20;
@@ -19,7 +19,6 @@ const V_PADDING: i32 = 20;
 trait Renderable {
     fn render(&self) -> VNode<Model>;
 }
-
 
 impl Renderable for ModStatus {
     fn render(&self) -> VNode<Model> {
@@ -91,75 +90,90 @@ impl Component for Model {
             Message::Exit => {
                 vgtk::quit();
                 UpdateAction::None
-            },
+            }
             Message::ConfigSelected(s) => {
                 self.config_selected = s.clone();
                 self.mod_pack = match s {
                     //TODO: Clean up
-                    Some(text) => update_mod_pack(text, self.scan_auto, &self.configs, &self.gui_settings),
+                    Some(text) => {
+                        update_mod_pack(text, self.scan_auto, &self.configs, &self.gui_settings)
+                    }
                     None => ModPack::default(),
                 };
                 UpdateAction::Render
-            },
+            }
             Message::ToggleScan => {
                 self.scan_auto = !self.scan_auto;
                 UpdateAction::None
-            },
+            }
             Message::ToggleExtract => {
                 self.gui_settings.extract_toggle();
                 UpdateAction::None
-            },
+            }
             Message::ManualScan => {
                 if let Some(config) = &self.get_current_config() {
-                let vanilla = ModMerger::files_in_vanilla(&config);
-                let val_ref: Vec<&Path> = vanilla.iter().map(|x| x.as_path()).collect();
-                self.mod_pack.register_vanilla(&val_ref);
-            
-                self.mod_pack.generate_conflicts();
+                    let vanilla = ModMerger::files_in_vanilla(&config);
+                    let val_ref: Vec<&Path> = vanilla.iter().map(|x| x.as_path()).collect();
+                    self.mod_pack.register_vanilla(&val_ref);
+
+                    self.mod_pack.generate_conflicts();
                 }
                 UpdateAction::None
-            },
+            }
             Message::SetPatchName(patch_name) => {
                 self.gui_settings.patch_name = patch_name.clone();
                 UpdateAction::None
-            },
+            }
             Message::SetOutputPath(output_path) => {
                 self.gui_settings.patch_path = output_path;
                 UpdateAction::None
-            },
+            }
             Message::SaveLoadOrder => {
-                if let Some(config) = &self.get_current_config() { 
+                if let Some(config) = &self.get_current_config() {
                     let load_order = self.mod_pack.load_order();
-                    let _res = ModMerger::set_entire_mod_list(&config.mod_path, config.new_launcher,&load_order);
+                    let _res = ModMerger::set_entire_mod_list(
+                        &config.mod_path,
+                        config.new_launcher,
+                        &load_order,
+                    );
                 }
                 UpdateAction::None
-            },
+            }
             Message::GeneratePatch => {
                 if let Some(conf_name) = &self.config_selected {
                     let conf = self.configs.iter().find(|c| &c.game_name == conf_name);
-                    let conf = match conf {Some(c) => c, _ => return UpdateAction::None};
+                    let conf = match conf {
+                        Some(c) => c,
+                        _ => return UpdateAction::None,
+                    };
 
-                    let mut mod_merger = ModMerger::new(self.gui_settings.extract,&self.gui_settings.patch_name,Path::new(&self.gui_settings.patch_path));
+                    let mut mod_merger = ModMerger::new(
+                        self.gui_settings.extract,
+                        &self.gui_settings.patch_name,
+                        Path::new(&self.gui_settings.patch_path),
+                    );
                     mod_merger.set_config(conf.clone());
                     //TODO: Print Errors
                     let merge_result = mod_merger.merge_and_save(&self.mod_pack);
                     if let Err(merge_err) = merge_result {
-                        eprintln!("{}",merge_err);
+                        eprintln!("{}", merge_err);
                     }
-                    
+
                     MergeDialog::run();
                 }
                 UpdateAction::None
-            },
+            }
             Message::ToggleModStatus(token) => {
                 match self.mod_pack.toggle_by_token(token) {
                     Some(_) => (),
-                    None => {eprintln!("Could not verify token!");},
+                    None => {
+                        eprintln!("Could not verify token!");
+                    }
                 };
                 UpdateAction::None
             }
         }
-}
+    }
 
     fn view(&self) -> VNode<Model> {
         gtk! {
@@ -209,31 +223,43 @@ impl Component for Model {
     }
 }
 
-fn list_config_entries(configs: &[ConfigOptions]) -> Vec<(Option<String>,String)> {
+fn list_config_entries(configs: &[ConfigOptions]) -> Vec<(Option<String>, String)> {
     let mut vec = Vec::new();
     for conf in configs {
-        vec.push((Some(conf.game_name.clone()),conf.game_name.clone()));
+        vec.push((Some(conf.game_name.clone()), conf.game_name.clone()));
     }
     vec
 }
 
-fn update_mod_pack(selected_idx: String, register_conflicts: bool, configs: &[ConfigOptions], gui_settings: &MergerSettings) -> ModPack {
+fn update_mod_pack(
+    selected_idx: String,
+    register_conflicts: bool,
+    configs: &[ConfigOptions],
+    gui_settings: &MergerSettings,
+) -> ModPack {
     let conf: Option<&ConfigOptions> = configs.iter().find(|m| m.game_name == selected_idx);
     if let Some(config) = conf {
-        let mod_merger = ModMerger::new(gui_settings.extract,&gui_settings.patch_name,Path::new(&gui_settings.patch_path));
+        let mod_merger = ModMerger::new(
+            gui_settings.extract,
+            &gui_settings.patch_name,
+            Path::new(&gui_settings.patch_path),
+        );
         //mod_merger.set_config(*config);
 
-        mod_merger.using_config(config.clone()).mod_pack_from_enabled(register_conflicts).unwrap_or_else(|_| ModPack::default())
+        mod_merger
+            .using_config(config.clone())
+            .mod_pack_from_enabled(register_conflicts)
+            .unwrap_or_else(|_| ModPack::default())
     } else {
         ModPack::default()
-    }/*
-    match conf {
-        Some(config) if let Ok(m) = ModPack::default()
-                                    .with_config(*config)
-                                    .mod_pack_from_enabled(register_conflicts)
-                                     => {m},
-        _ => ModPack::default(),
-    }*/
+    } /*
+      match conf {
+          Some(config) if let Ok(m) = ModPack::default()
+                                      .with_config(*config)
+                                      .mod_pack_from_enabled(register_conflicts)
+                                       => {m},
+          _ => ModPack::default(),
+      }*/
 }
 
 // Our pop up window to indicate merging has finished.MergeDialog
@@ -274,7 +300,6 @@ impl MergeDialog {
         let _future = vgtk::run_dialog::<MergeDialog>(vgtk::current_window().as_ref());
     }
 }
-
 
 fn main() {
     pretty_env_logger::init();

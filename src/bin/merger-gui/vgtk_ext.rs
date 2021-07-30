@@ -1,26 +1,29 @@
 // Thanks to jnetterf
 
-use vgtk::lib::gtk::{ComboBoxTextExt};
+use vgtk::lib::gtk::ComboBoxTextExt;
 
 pub trait ComboBoxTextExtHelpers: ComboBoxTextExt {
-    fn set_items(&self, items: Vec<(Option<String>,String)>);
-    fn get_items(&self) -> Vec<(Option<String>,String)>;
+    fn set_items(&self, items: Vec<(Option<String>, String)>);
+    fn get_items(&self) -> Vec<(Option<String>, String)>;
     fn set_selected(&self, id: Option<String>);
     fn get_selected(&self) -> Option<String>;
 }
 
-impl<A: vgtk::lib::gtk::ComboBoxExt> ComboBoxTextExtHelpers for A where A: ComboBoxTextExt {
-    fn set_items(&self, items: Vec<(Option<String>,String)>) {
+impl<A: vgtk::lib::gtk::ComboBoxExt> ComboBoxTextExtHelpers for A
+where
+    A: ComboBoxTextExt,
+{
+    fn set_items(&self, items: Vec<(Option<String>, String)>) {
         self.remove_all();
-        for (id,text) in items {
+        for (id, text) in items {
             match id {
-                None => self.append(None,&text),
-                Some(s) => self.append(Some(&s),&text),
+                None => self.append(None, &text),
+                Some(s) => self.append(Some(&s), &text),
             };
         }
     }
 
-    fn get_items(&self) -> Vec<(Option<String>,String)> {
+    fn get_items(&self) -> Vec<(Option<String>, String)> {
         Vec::new()
     }
 

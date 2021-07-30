@@ -10,7 +10,7 @@ pub enum MergerError {
     LoadZipError(String),
     LoadRegisteredModError(String),
     ReadDescriptorError,
-    CouldNotCompareError(String,String),
+    CouldNotCompareError(String, String),
     ModPackLookupError(String),
     UnknownError,
 }
@@ -18,16 +18,30 @@ pub enum MergerError {
 impl MergerError {
     fn error_text(&self) -> String {
         match self {
-            MergerError::SplitSettingsError => String::from("Unable to split settings file on loaded mod list."),
+            MergerError::SplitSettingsError => {
+                String::from("Unable to split settings file on loaded mod list.")
+            }
             MergerError::LoadFileError(s) => format!("Could not load the specified file: {}", s),
-            MergerError::FindSettingsError => String::from("Could not locate the launcher settings file at the specified directory."),
-            MergerError::MainFileMissingError(s) => format!("Could not load enabled mod. File does not exist. {}", s),
+            MergerError::FindSettingsError => String::from(
+                "Could not locate the launcher settings file at the specified directory.",
+            ),
+            MergerError::MainFileMissingError(s) => {
+                format!("Could not load enabled mod. File does not exist. {}", s)
+            }
             MergerError::LoadFolderError(s) => format!("Mod data folder does not exist. {}", s),
             MergerError::LoadZipError(s) => format!("Mod data archive does not exist. {}", s),
-            MergerError::LoadRegisteredModError(s) => format!("Could not load files for previously registered mod. {}", s),
-            MergerError::ReadDescriptorError => String::from("Unable to read .mod descriptor file."),
-            MergerError::ModPackLookupError(s) => format!("Unable to retrieve information on requested mod. {}", s),
-            MergerError::CouldNotCompareError(s1,s2) => format!("Could not load {} file for comparision. {}", s1, s2),
+            MergerError::LoadRegisteredModError(s) => {
+                format!("Could not load files for previously registered mod. {}", s)
+            }
+            MergerError::ReadDescriptorError => {
+                String::from("Unable to read .mod descriptor file.")
+            }
+            MergerError::ModPackLookupError(s) => {
+                format!("Unable to retrieve information on requested mod. {}", s)
+            }
+            MergerError::CouldNotCompareError(s1, s2) => {
+                format!("Could not load {} file for comparision. {}", s1, s2)
+            }
             _ => String::from("Unknown Merger Error"),
         }
     }
@@ -42,19 +56,24 @@ impl MergerError {
             MergerError::LoadZipError(_) => "Load Zip Error",
             MergerError::LoadRegisteredModError(_) => "Load Registered Mod Error",
             MergerError::ReadDescriptorError => "Read Descriptor Error",
-            MergerError::CouldNotCompareError(_,_) => "Could Not Compare Error",
+            MergerError::CouldNotCompareError(_, _) => "Could Not Compare Error",
             MergerError::ModPackLookupError(_) => "Modpack Lookup Error",
             MergerError::UnknownError => "Unknown Error",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
 impl fmt::Display for MergerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,"{e}: {t}", e = self.variant_name(), t = self.error_text())
+        write!(
+            f,
+            "{e}: {t}",
+            e = self.variant_name(),
+            t = self.error_text()
+        )
     }
 }
-
 
 impl Error for MergerError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
@@ -62,11 +81,16 @@ impl Error for MergerError {
     }
 }
 
-pub fn verbose_error<T>(verbose: bool, fatal: bool, res: T) -> Result<(),T>
-where T: Error {
+pub fn verbose_error<T>(verbose: bool, fatal: bool, res: T) -> Result<(), T>
+where
+    T: Error,
+{
     match (verbose, fatal) {
-        (_,true) => {Err(res)},
-        (true,false) => {eprintln!("{}",res); Ok(())},
+        (_, true) => Err(res),
+        (true, false) => {
+            eprintln!("{}", res);
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
