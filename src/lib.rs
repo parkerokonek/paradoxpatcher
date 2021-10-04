@@ -28,6 +28,9 @@ use merge_diff::diff_single_conflict;
 use configs::{ConfigOptions, MergerSettings};
 use io::{files, re, zips};
 
+#[cfg(feature = "parallel")]
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+
 lazy_static! {
     // Evaluate all of our regular expressions just once for efficiency and things only dying the first time
     static ref RE_DEPS: Regex     = Regex::new(r#"(?m)dependencies[^}]+"#).unwrap();
@@ -525,7 +528,12 @@ impl ModMerger {
 
         let mut successful = 0;
 
-        for conf in mod_pack.list_conflicts() {
+        #[cfg(feature = "parallel")]
+        let conf_iter = mod_pack.list_conflicts().iter().into_par_iter();
+        #[cfg(not(feature = "parallel"))]
+        let conf_iter = mod_pack.list_conflicts().iter();
+
+        for conf in conf_iter {
             let should_transcode = match conf.path().extension() {
                 Some(ext) => !config
                     .no_transcode
@@ -586,7 +594,7 @@ impl ModMerger {
                     let cur_mod = &conf.list_mods()[*file_index];
                     let cur_mod = match mod_pack.get_mod(cur_mod) {
                         Some(m) => m,
-                        None => return Err(MergerError::ModPackLookupError(cur_mod.clone())),
+                        None => return Err(MergerError::ModPackLookupError(cur_mod.to_owned())),
                     };
                     let cur_folder: PathBuf = [&mod_folder, cur_mod.get_name()].iter().collect();
                     let _try_write = ModMerger::write_to_mod_folder_string(
