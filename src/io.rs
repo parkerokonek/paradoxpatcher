@@ -1,4 +1,4 @@
-pub mod files;
-pub mod zips;
-pub mod re;
 mod encodings;
+pub mod files;
+pub mod re;
+pub mod zips;

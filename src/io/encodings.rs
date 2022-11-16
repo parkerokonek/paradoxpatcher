@@ -1,8 +1,9 @@
-use encoding::{Encoding, DecoderTrap, EncoderTrap};
+use crate::error::MergerError;
 use encoding::all::WINDOWS_1252;
+use encoding::{DecoderTrap, EncoderTrap, Encoding};
 
 fn decode_latin1(input: &[u8]) -> Option<String> {
-    match WINDOWS_1252.decode(input,DecoderTrap::Strict) {
+    match WINDOWS_1252.decode(input, DecoderTrap::Strict) {
         Ok(s) => Some(s),
         _ => None,
     }
@@ -25,19 +26,21 @@ pub fn normalize_line_endings(data: String) -> String {
     data.replace("\r\n", "\n").replace("\n", "\r\n")
 }
 
-pub fn read_bytes_to_string(input: Vec<u8>, decode: bool, normalize: bool) -> Option<String> {
+pub fn read_bytes_to_string(
+    input: Vec<u8>,
+    decode: bool,
+    normalize: bool,
+) -> Result<String, MergerError> {
+    //TODO: Update both decoding functions to return actual errors
     let output: String = if decode {
-        read_utf8_or_latin1(input)?
+        read_utf8_or_latin1(input).ok_or(MergerError::UnknownError)?
     } else {
-        match String::from_utf8(input) {
-            Ok(s) => s,
-            Err(_) => return None,
-        }
+        String::from_utf8(input).or(Err(MergerError::UnknownError))?
     };
 
     if normalize {
-        Some(normalize_line_endings(output))
+        Ok(normalize_line_endings(output))
     } else {
-        Some(output)
+        Ok(output)
     }
 }
